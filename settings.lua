@@ -294,6 +294,15 @@ function SettingsManager:loadDefaults()
             abandoned_color = "#F44336",
             border_color = "#000000"
         },
+        -- Collection-star overlay settings
+        collection_star = {
+            size = 20,
+            x_offset = 6,
+            y_offset = 6,
+            position = "top_left",
+            use_background_circle = true,
+            background_color = "#000000"
+        },
         -- CoverBrowser (vos.lua) cover enhancements + badges settings
         coverbrowser = {
             rounded_corners = {
@@ -614,7 +623,12 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
 end
 
 function SettingsManager:getBadgesMenu(plugin)
+    local self_ref = self
     local cb = self.settings.coverbrowser
+    local star = self.settings.collection_star
+    local function collectionStarEnabled()
+        return self_ref:isEnabled("collection_star")
+    end
     return {
         {
             text = _("Progress Bar"),
@@ -659,6 +673,51 @@ function SettingsManager:getBadgesMenu(plugin)
             text = _("Status Icons"),
             sub_item_table = {
                 checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin)
+            }
+        },
+        {
+            text = _("Collection star"),
+            sub_item_table = {
+                {
+                    text = _("Enable collection star"),
+                    checked_func = collectionStarEnabled,
+                    callback = function()
+                        self_ref:setEnabled("collection_star", not collectionStarEnabled())
+                        if plugin then
+                            plugin:refresh()
+                        end
+                    end
+                },
+                choiceItem(self, star, "position", "Position", {
+                    {label = "Top left", value = "top_left"},
+                    {label = "Top right", value = "top_right"},
+                    {label = "Bottom left", value = "bottom_left"},
+                    {label = "Bottom right", value = "bottom_right"}
+                }, plugin, collectionStarEnabled),
+                numberItem(self, star, "size", "Size", plugin, {
+                    min = 8,
+                    max = 100,
+                    enabled_func = collectionStarEnabled
+                }),
+                numberItem(self, star, "x_offset", "Horizontal offset", plugin, {
+                    min = 0,
+                    max = 100,
+                    enabled_func = collectionStarEnabled
+                }),
+                numberItem(self, star, "y_offset", "Vertical offset", plugin, {
+                    min = 0,
+                    max = 100,
+                    enabled_func = collectionStarEnabled
+                }),
+                checkboxItem(
+                    self, star, "use_background_circle", "Use background circle", plugin,
+                    collectionStarEnabled
+                ),
+                colorItem(self, star, "background_color", "Background color", plugin, {
+                    enabled_func = function()
+                        return collectionStarEnabled() and star.use_background_circle
+                    end
+                })
             }
         }
     }
