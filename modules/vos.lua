@@ -577,10 +577,11 @@ end
 local function paintStatusIconsOverlay(bb, x, y, self_widget)
     local shows =
         self_widget.status == "complete" or self_widget.status == "abandoned" or
+        (self_widget.do_hint_opened and self_widget.been_opened) or
         (self_widget.percent_finished and
-            ((self_widget.do_hint_opened and self_widget.been_opened) or
-                (self_widget.menu and self_widget.menu.name == "history") or
-                (self_widget.menu and self_widget.menu.name == "collections")))
+            (self_widget.menu and
+                (self_widget.menu.name == "history" or
+                    self_widget.menu.name == "collections")))
     if not shows then
         return
     end
@@ -1369,8 +1370,27 @@ local function patchMosaicMenuItem()
     MosaicMenuItem.paintTo = preserveUpvalues(TRUE_ORIG_PAINTTO, function(self, bb, x, y, ...)
         local cb_enabled = masterEnabled()
         local star_enabled = collectionStarEnabled()
-        if not cb_enabled and not star_enabled then
+
+        -- koreader's native CoverBrowser paints its own status dogear in the
+        -- bottom-right corner whenever do_hint_opened && been_opened. Our
+        -- status_icons overlay draws its own mark at the same spot, so when
+        -- that feature is active we suppress the native one. The native code
+        -- only gates that dogear on been_opened, so temporarily clearing it
+        -- (and restoring it before our overlay reads it) is enough.
+        local function paintToOrig(bb, x, y)
+            local saved_been_opened
+            if cb_enabled and getCfg().status_icons.enabled and self.been_opened then
+                saved_been_opened = self.been_opened
+                self.been_opened = false
+            end
             TRUE_ORIG_PAINTTO(self, bb, x, y)
+            if saved_been_opened then
+                self.been_opened = saved_been_opened
+            end
+        end
+
+        if not cb_enabled and not star_enabled then
+            paintToOrig(bb, x, y)
             return
         end
         local c = getCfg()
@@ -1380,7 +1400,7 @@ local function patchMosaicMenuItem()
         -- cover. getCfg() is safe here (coverbrowser table is always
         -- deep-filled in init()).
         if not cb_enabled then
-            TRUE_ORIG_PAINTTO(self, bb, x, y)
+            paintToOrig(bb, x, y)
             if star_enabled then
                 paintCollectionStar(bb, x, y, self)
             end
@@ -1392,10 +1412,10 @@ local function patchMosaicMenuItem()
             local orig_pw_paint = ProgressWidget.paintTo
             ProgressWidget.paintTo = function()
             end
-            TRUE_ORIG_PAINTTO(self, bb, x, y)
+            paintToOrig(bb, x, y)
             ProgressWidget.paintTo = orig_pw_paint
         else
-            TRUE_ORIG_PAINTTO(self, bb, x, y)
+            paintToOrig(bb, x, y)
         end
 
         local is_dir = self.is_directory or (self.entry and not (self.entry.is_file or self.entry.file))
