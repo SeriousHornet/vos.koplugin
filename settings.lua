@@ -435,26 +435,6 @@ function SettingsManager:getMainMenu(plugin)
             sub_item_table = self:getNavbarMenu(plugin)
         },
         {
-            text = _("Cover enhancements"),
-            sub_item_table = self:getCoverEnhancementsMenu(plugin)
-        },
-        {
-            text = _("Badges"),
-            sub_item_table = self:getBadgesMenu(plugin)
-        },
-        {
-            text = _("Hide pagination"),
-            checked_func = function()
-                return self_ref:isEnabled("hide_pagination")
-            end,
-            callback = function()
-                self_ref:setEnabled("hide_pagination", not self_ref:isEnabled("hide_pagination"))
-                if plugin then
-                    plugin:refresh()
-                end
-            end
-        },
-        {
             text = _("Enable Cover Enhancements & Badges"),
             checked_func = function()
                 return self_ref:isEnabled("coverbrowser")
@@ -465,6 +445,24 @@ function SettingsManager:getMainMenu(plugin)
                     plugin:refresh()
                 end
             end
+        },
+        {
+            text = _("Cover enhancements"),
+            enabled_func = function()
+                return self_ref:isEnabled("coverbrowser")
+            end,
+            sub_item_table = self:getCoverEnhancementsMenu(plugin)
+        },
+        {
+            text = _("Badges"),
+            enabled_func = function()
+                return self_ref:isEnabled("coverbrowser")
+            end,
+            sub_item_table = self:getBadgesMenu(plugin)
+        },
+        {
+            text = _("Clean up"),
+            sub_item_table = self:getCleanupMenu(plugin)
         },
         {
             text = _("Reset to defaults"),
@@ -508,7 +506,49 @@ function SettingsManager:getMainMenu(plugin)
                     }
                 )
             end
+        },
+        {
+            text = _("About"),
+            callback = function()
+                UIManager:show(
+                    InfoMessage:new {
+                        text = _(
+                            "Visual Overhaul Suite (VOS)\n\n" ..
+                            "A comprehensive visual customization suite for KOReader.\n\n" ..
+                            "Features:\n" ..
+                            "  - Custom navigation bar with flexible tab arrangement\n" ..
+                            "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n" ..
+                            "  - Badges: progress bar, percentage, pages, status icons\n" ..
+                            "  - Clean up: hide pagination and the description hint bar\n\n" ..
+                            "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n" ..
+                            "Use 'Reset to defaults' to restore the factory configuration."
+                        )
+                    }
+                )
+            end
         }
+    }
+end
+
+-- "Clean up" section: UI elements that declutter the file browser.
+function SettingsManager:getCleanupMenu(plugin)
+    local self_ref = self
+    local cb = self.settings.coverbrowser
+    return {
+        checkboxItem(self, cb, "disable_description_hint", "Disable description hint bar", plugin),
+        {
+            text = _("Hide pagination"),
+            checked_func = function()
+                return self_ref:isEnabled("hide_pagination")
+            end,
+            callback = function()
+                self_ref:setEnabled("hide_pagination", not self_ref:isEnabled("hide_pagination"))
+                if plugin then
+                    plugin:refresh()
+                end
+            end
+        },
+        checkboxItem(self, cb.progress_bar, "hide_native", "Hide old progress bar", plugin)
     }
 end
 
@@ -569,8 +609,7 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
                 numberItem(self, cb.folder_covers, "folder_font_size", "Folder font size", plugin, {min = 6, max = 60}),
                 numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, {min = 0, max = 10})
             }
-        },
-        checkboxItem(self, cb, "disable_description_hint", "Disable description hint bar", plugin)
+        }
     }
 end
 
@@ -582,7 +621,6 @@ function SettingsManager:getBadgesMenu(plugin)
             sub_item_table = {
                 checkboxItem(self, cb.progress_bar, "enabled", "Enable progress bar", plugin),
                 checkboxItem(self, cb.progress_bar, "colored", "Colored", plugin),
-                checkboxItem(self, cb.progress_bar, "hide_native", "Hide old progress bar", plugin),
                 numberItem(self, cb.progress_bar, "bar_h", "Bar height", plugin, {min = 1, max = 30}),
                 numberItem(self, cb.progress_bar, "bar_radius", "Bar radius", plugin, {min = 0, max = 15}),
                 numberItem(self, cb.progress_bar, "inset_x", "Inset X", plugin, {min = 0, max = 100}),

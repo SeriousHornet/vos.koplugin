@@ -60,7 +60,7 @@ end
 
 function VisualOverhaul:addToMainMenu(menu_items)
     menu_items.visual_overhaul = {
-        text = _("Visual Overhaul Suite"),
+        text = _("Visual Overhaul Suite (VOS)"),
         sorting_hint = "tools",
         sub_item_table = self.settings:getMainMenu(self)
     }
