@@ -602,34 +602,22 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
     local mark
     if self_widget.status == "abandoned" then
         local name = BD.mirroredUILayout() and "dogear.abandoned.rtl" or "dogear.abandoned"
-        mark =
-            IconWidget:new {
-            icon = name,
-            file = vosicons.iconFile(name),
+        mark = IconWidget:new(vosicons.icon(name, {
             width = corner_mark_size,
             height = corner_mark_size,
-            alpha = true
-        }
+        }))
     elseif self_widget.status == "complete" then
         local name = BD.mirroredUILayout() and "dogear.complete.rtl" or "dogear.complete"
-        mark =
-            IconWidget:new {
-            icon = name,
-            file = vosicons.iconFile(name),
+        mark = IconWidget:new(vosicons.icon(name, {
             width = corner_mark_size,
             height = corner_mark_size,
-            alpha = true
-        }
+        }))
     else
-        mark =
-            IconWidget:new {
-            icon = "dogear.reading",
-            file = vosicons.iconFile("dogear.reading"),
+        mark = IconWidget:new(vosicons.icon("dogear.reading", {
             rotation_angle = BD.mirroredUILayout() and 270 or 0,
             width = corner_mark_size,
             height = corner_mark_size,
-            alpha = true
-        }
+        }))
     end
     if mark then
         mark:paintTo(bb, x + ix, y + iy)

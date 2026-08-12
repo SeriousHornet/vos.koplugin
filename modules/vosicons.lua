@@ -25,8 +25,17 @@ end
 
 -- Build the IconWidget options for a VOS icon: explicit `file` wins,
 -- `icon` remains set as fallback and for any name-based patching.
-local function icon(name)
-    return {icon = name, file = iconFile(name)}
+-- `alpha` defaults to true so VOS's transparent SVGs keep their alpha
+-- layer at render time (see ImageWidget: flattening of icons). Callers
+-- may merge extra options (width, height, rotation_angle, ...) via `extra`.
+local function icon(name, extra)
+    local o = {icon = name, file = iconFile(name), alpha = true}
+    if extra then
+        for k, v in pairs(extra) do
+            o[k] = v
+        end
+    end
+    return o
 end
 
 return {
