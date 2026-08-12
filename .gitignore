@@ -1,0 +1,5 @@
+# Windows filesystem junk (Alternate Data Streams)
+*.Zone.Identifier
+
+# Backup files
+*.old

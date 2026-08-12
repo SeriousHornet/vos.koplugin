@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<svg
+   width="24"
+   height="24"
+   viewBox="0 0 24 24"
+   fill="none"
+   stroke="currentColor"
+   stroke-width="2"
+   stroke-linecap="round"
+   stroke-linejoin="round"
+   class="lucide lucide-form-icon lucide-form"
+   version="1.1"
+   id="svg3"
+   sodipodi:docname="appbar.pageview.svg"
+   inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <defs
+     id="defs3" />
+  <sodipodi:namedview
+     id="namedview3"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:zoom="11.888233"
+     inkscape:cx="-1.9346862"
+     inkscape:cy="25.865913"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="svg3" />
+  <path
+     d="M 5.719721,13.57007 H 10.42993"
+     id="path1"
+     style="stroke:#000000;stroke-width:1.57007;stroke-opacity:1" />
+  <path
+     d="M 5.719721,4.1496513 H 13.57007"
+     id="path2"
+     style="stroke:#000000;stroke-width:1.57007;stroke-opacity:1" />
+  <rect
+     x="5.7197208"
+     y="16.710209"
+     width="12.560558"
+     height="3.1401396"
+     rx="0.78503489"
+     id="rect2"
+     style="stroke:#000000;stroke-width:1.57007;stroke-opacity:1" />
+  <rect
+     x="5.7197208"
+     y="7.2897906"
+     width="12.560558"
+     height="3.1401396"
+     rx="0.78503489"
+     id="rect3"
+     style="stroke:#000000;stroke-width:1.57007;stroke-opacity:1" />
+</svg>
