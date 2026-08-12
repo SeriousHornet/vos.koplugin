@@ -303,10 +303,10 @@ function SettingsManager:loadDefaults()
                 ratio_w = 2,
                 ratio_h = 3,
                 stretch_limit = 50,
-                fill = false
+                fill = true
             },
             stretch_covers = {
-                enabled = false
+                enabled = true
             },
             series_indicator = {
                 style = "off", -- "off" | "badge" | "bar"
@@ -318,7 +318,7 @@ function SettingsManager:loadDefaults()
                 background_color = "#E7E7E7"
             },
             faded_finished = {
-                enabled = false,
+                enabled = true,
                 fading_amount = 0.5
             },
             progress_bar = {
@@ -339,7 +339,7 @@ function SettingsManager:loadDefaults()
                 border_color = "#000000"
             },
             percent_badge = {
-                enabled = false,
+                enabled = true,
                 text_size = 0.5,
                 move_on_x = 5,
                 move_on_y = -1,
@@ -355,11 +355,11 @@ function SettingsManager:loadDefaults()
                 move_from_border = 8
             },
             status_icons = {
-                enabled = false
+                enabled = true
             },
-            disable_description_hint = false,
+            disable_description_hint = true,
             folder_covers = {
-                enabled = false,
+                enabled = true,
                 show_folder_name = true,
                 name_centered = true,
                 file_count_size = 14,
@@ -431,11 +431,11 @@ function SettingsManager:getMainMenu(plugin)
 
     return {
         {
-            text = _("Navigation Bar"),
+            text = _("Navigation bar"),
             sub_item_table = self:getNavbarMenu(plugin)
         },
         {
-            text = _("Cover Enhancements"),
+            text = _("Cover enhancements"),
             sub_item_table = self:getCoverEnhancementsMenu(plugin)
         },
         {
@@ -443,7 +443,7 @@ function SettingsManager:getMainMenu(plugin)
             sub_item_table = self:getBadgesMenu(plugin)
         },
         {
-            text = _("Hide Pagination"),
+            text = _("Hide pagination"),
             checked_func = function()
                 return self_ref:isEnabled("hide_pagination")
             end,
@@ -455,7 +455,7 @@ function SettingsManager:getMainMenu(plugin)
             end
         },
         {
-            text = _("Cover Enhancements & Badges"),
+            text = _("Enable Cover Enhancements & Badges"),
             checked_func = function()
                 return self_ref:isEnabled("coverbrowser")
             end,
@@ -467,7 +467,7 @@ function SettingsManager:getMainMenu(plugin)
             end
         },
         {
-            text = _("Reset to Defaults"),
+            text = _("Reset to defaults"),
             callback = function(touchmenu_instance)
                 UIManager:show(
                     ConfirmBox:new {
@@ -516,61 +516,61 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
     local cb = self.settings.coverbrowser
     return {
         {
-            text = _("Rounded Corners"),
+            text = _("Rounded corners"),
             sub_item_table = {
-                checkboxItem(self, cb.rounded_corners, "enabled", "Enable Rounded Corners", plugin)
+                checkboxItem(self, cb.rounded_corners, "enabled", "Enable rounded corners", plugin)
             }
         },
         {
-            text = _("Cover Aspect Ratio"),
+            text = _("Cover aspect ratio"),
             sub_item_table = {
-                numberItem(self, cb.cover_aspect_ratio, "ratio_w", "Aspect Ratio Width", plugin, {min = 1, max = 10}),
-                numberItem(self, cb.cover_aspect_ratio, "ratio_h", "Aspect Ratio Height", plugin, {min = 1, max = 10}),
-                numberItem(self, cb.cover_aspect_ratio, "stretch_limit", "Stretch Limit (%)", plugin, {min = 0, max = 100}),
-                checkboxItem(self, cb.cover_aspect_ratio, "fill", "Fill Cover", plugin)
+                numberItem(self, cb.cover_aspect_ratio, "ratio_w", "Aspect ratio width", plugin, {min = 1, max = 10}),
+                numberItem(self, cb.cover_aspect_ratio, "ratio_h", "Aspect ratio height", plugin, {min = 1, max = 10}),
+                numberItem(self, cb.cover_aspect_ratio, "stretch_limit", "Stretch limit (%)", plugin, {min = 0, max = 100}),
+                checkboxItem(self, cb.cover_aspect_ratio, "fill", "Fill cover", plugin)
             }
         },
         {
-            text = _("Stretch Covers"),
+            text = _("Stretch covers"),
             sub_item_table = {
-                checkboxItem(self, cb.stretch_covers, "enabled", "Enable Stretch Covers", plugin)
+                checkboxItem(self, cb.stretch_covers, "enabled", "Enable stretch covers", plugin)
             }
         },
         {
-            text = _("Series Indicator"),
+            text = _("Series indicator"),
             sub_item_table = {
                 choiceItem(self, cb.series_indicator, "style", "Style", {
                     {label = "Off", value = "off"},
                     {label = "Badge", value = "badge"},
-                    {label = "Bar", value = "bar"}
+                    {label = "Flap", value = "bar"}
                 }, plugin),
-                numberItem(self, cb.series_indicator, "font_size", "Font Size", plugin, {min = 6, max = 40}),
-                numberItem(self, cb.series_indicator, "border_thickness", "Border Thickness", plugin, {min = 0, max = 10}),
-                numberItem(self, cb.series_indicator, "border_corner_radius", "Border Corner Radius", plugin, {min = 0, max = 30}),
-                colorItem(self, cb.series_indicator, "text_color", "Text Color", plugin),
-                colorItem(self, cb.series_indicator, "border_color", "Border Color", plugin),
-                colorItem(self, cb.series_indicator, "background_color", "Background Color", plugin)
+                numberItem(self, cb.series_indicator, "font_size", "Font size", plugin, {min = 6, max = 40}),
+                numberItem(self, cb.series_indicator, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
+                numberItem(self, cb.series_indicator, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
+                colorItem(self, cb.series_indicator, "text_color", "Text color", plugin),
+                colorItem(self, cb.series_indicator, "border_color", "Border color", plugin),
+                colorItem(self, cb.series_indicator, "background_color", "Background color", plugin)
             }
         },
         {
-            text = _("Faded Finished Books"),
+            text = _("Fade finished books"),
             sub_item_table = {
-                checkboxItem(self, cb.faded_finished, "enabled", "Enable Faded Finished", plugin),
-                numberItem(self, cb.faded_finished, "fading_amount", "Fading Amount", plugin, {min = 0, max = 1})
+                checkboxItem(self, cb.faded_finished, "enabled", "Enable faded finished books", plugin),
+                numberItem(self, cb.faded_finished, "fading_amount", "Fading amount", plugin, {min = 0, max = 1})
             }
         },
         {
-            text = _("Folder Covers"),
+            text = _("Folder covers"),
             sub_item_table = {
-                checkboxItem(self, cb.folder_covers, "enabled", "Enable Folder Covers", plugin),
-                checkboxItem(self, cb.folder_covers, "show_folder_name", "Show Folder Name", plugin),
-                checkboxItem(self, cb.folder_covers, "name_centered", "Name Centered", plugin),
-                numberItem(self, cb.folder_covers, "file_count_size", "File Count Size", plugin, {min = 6, max = 40}),
-                numberItem(self, cb.folder_covers, "folder_font_size", "Folder Font Size", plugin, {min = 6, max = 60}),
-                numberItem(self, cb.folder_covers, "folder_border", "Folder Border", plugin, {min = 0, max = 10})
+                checkboxItem(self, cb.folder_covers, "enabled", "Enable folder covers", plugin),
+                checkboxItem(self, cb.folder_covers, "show_folder_name", "Show folder name", plugin),
+                checkboxItem(self, cb.folder_covers, "name_centered", "Name centered", plugin),
+                numberItem(self, cb.folder_covers, "file_count_size", "File count size", plugin, {min = 6, max = 40}),
+                numberItem(self, cb.folder_covers, "folder_font_size", "Folder font size", plugin, {min = 6, max = 60}),
+                numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, {min = 0, max = 10})
             }
         },
-        checkboxItem(self, cb, "disable_description_hint", "Disable Description Hint", plugin)
+        checkboxItem(self, cb, "disable_description_hint", "Disable description hint bar", plugin)
     }
 end
 
@@ -580,47 +580,47 @@ function SettingsManager:getBadgesMenu(plugin)
         {
             text = _("Progress Bar"),
             sub_item_table = {
-                checkboxItem(self, cb.progress_bar, "enabled", "Enable Progress Bar", plugin),
+                checkboxItem(self, cb.progress_bar, "enabled", "Enable progress bar", plugin),
                 checkboxItem(self, cb.progress_bar, "colored", "Colored", plugin),
-                checkboxItem(self, cb.progress_bar, "hide_native", "Hide Native Bar", plugin),
-                numberItem(self, cb.progress_bar, "bar_h", "Bar Height", plugin, {min = 1, max = 30}),
-                numberItem(self, cb.progress_bar, "bar_radius", "Bar Radius", plugin, {min = 0, max = 15}),
+                checkboxItem(self, cb.progress_bar, "hide_native", "Hide old progress bar", plugin),
+                numberItem(self, cb.progress_bar, "bar_h", "Bar height", plugin, {min = 1, max = 30}),
+                numberItem(self, cb.progress_bar, "bar_radius", "Bar radius", plugin, {min = 0, max = 15}),
                 numberItem(self, cb.progress_bar, "inset_x", "Inset X", plugin, {min = 0, max = 100}),
                 numberItem(self, cb.progress_bar, "inset_y", "Inset Y", plugin, {min = 0, max = 100}),
-                numberItem(self, cb.progress_bar, "gap_to_icon", "Gap to Icon", plugin, {min = 0, max = 100}),
-                colorItem(self, cb.progress_bar, "track_color", "Track Color", plugin),
-                colorItem(self, cb.progress_bar, "fill_color", "Fill Color", plugin, {rgb_key = "fill_color_rgb"}),
-                colorItem(self, cb.progress_bar, "abandoned_color", "Abandoned Color", plugin, {rgb_key = "abandoned_color_rgb"}),
-                numberItem(self, cb.progress_bar, "border_w", "Border Width", plugin, {min = 0, max = 10}),
-                colorItem(self, cb.progress_bar, "border_color", "Border Color", plugin)
+                numberItem(self, cb.progress_bar, "gap_to_icon", "Gap to icon", plugin, {min = 0, max = 100}),
+                colorItem(self, cb.progress_bar, "track_color", "Track color", plugin),
+                colorItem(self, cb.progress_bar, "fill_color", "Fill color", plugin, {rgb_key = "fill_color_rgb"}),
+                colorItem(self, cb.progress_bar, "abandoned_color", "Abandoned color", plugin, {rgb_key = "abandoned_color_rgb"}),
+                numberItem(self, cb.progress_bar, "border_w", "Border width", plugin, {min = 0, max = 10}),
+                colorItem(self, cb.progress_bar, "border_color", "Border color", plugin)
             }
         },
         {
-            text = _("Percent Badge"),
+            text = _("Percentage Badge"),
             sub_item_table = {
-                checkboxItem(self, cb.percent_badge, "enabled", "Enable Percent Badge", plugin),
-                numberItem(self, cb.percent_badge, "text_size", "Text Size", plugin, {min = 0.1, max = 2}),
-                numberItem(self, cb.percent_badge, "move_on_x", "Move on X", plugin, {min = -100, max = 100}),
-                numberItem(self, cb.percent_badge, "move_on_y", "Move on Y", plugin, {min = -100, max = 100}),
-                numberItem(self, cb.percent_badge, "badge_w", "Badge Width", plugin, {min = 20, max = 200}),
-                numberItem(self, cb.percent_badge, "badge_h", "Badge Height", plugin, {min = 20, max = 200}),
-                numberItem(self, cb.percent_badge, "bump_up", "Bump Up", plugin, {min = 0, max = 10})
+                checkboxItem(self, cb.percent_badge, "enabled", "Enable percentage badge", plugin),
+                numberItem(self, cb.percent_badge, "text_size", "Text size", plugin, {min = 0.1, max = 2}),
+                numberItem(self, cb.percent_badge, "move_on_x", "Move left/right", plugin, {min = -100, max = 100}),
+                numberItem(self, cb.percent_badge, "move_on_y", "Move up/down", plugin, {min = -100, max = 100}),
+                numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, {min = 20, max = 200}),
+                numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, {min = 20, max = 200}),
+                numberItem(self, cb.percent_badge, "bump_up", "Bump up", plugin, {min = 0, max = 10})
             }
         },
         {
             text = _("Pages Badge"),
             sub_item_table = {
-                checkboxItem(self, cb.pages_badge, "enabled", "Enable Pages Badge", plugin),
-                numberItem(self, cb.pages_badge, "font_size", "Font Size", plugin, {min = 0.1, max = 2}),
-                numberItem(self, cb.pages_badge, "border_thickness", "Border Thickness", plugin, {min = 0, max = 10}),
-                numberItem(self, cb.pages_badge, "border_corner_radius", "Border Corner Radius", plugin, {min = 0, max = 30}),
-                numberItem(self, cb.pages_badge, "move_from_border", "Move From Border", plugin, {min = 0, max = 100})
+                checkboxItem(self, cb.pages_badge, "enabled", "Enable pages badge", plugin),
+                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, {min = 0.1, max = 2}),
+                numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
+                numberItem(self, cb.pages_badge, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
+                numberItem(self, cb.pages_badge, "move_from_border", "Move from edge", plugin, {min = 0, max = 100})
             }
         },
         {
             text = _("Status Icons"),
             sub_item_table = {
-                checkboxItem(self, cb.status_icons, "enabled", "Enable Status Icons", plugin)
+                checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin)
             }
         }
     }
@@ -645,7 +645,7 @@ function SettingsManager:getNavbarMenu(plugin)
 
     return {
         {
-            text = _("Enable Navbar"),
+            text = _("Enable NavBar"),
             checked_func = function()
                 return self_ref:isEnabled("navbar")
             end,
@@ -1026,7 +1026,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         end
                         UIManager:show(
                             SortWidget:new {
-                                title = _("Arrange navbar tabs"),
+                                title = _("Arrange NavBar tabs"),
                                 item_table = sort_items,
                                 callback = function()
                                     for i, item in ipairs(sort_items) do
@@ -1432,7 +1432,7 @@ function SettingsManager:getNavbarMenu(plugin)
             end
         },
         {
-            text = _("Refresh navbar"),
+            text = _("Refresh NavBar"),
             separator = true,
             callback = function()
                 if plugin then

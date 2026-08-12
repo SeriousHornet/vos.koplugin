@@ -1,37 +1,5 @@
 --[[--
-CoverBrowser Module (vos.lua) - unified coordinator for every cover-grid
-visual patch: rounded corners, stretched covers, series indicator, faded
-finished books, progress bar, percent/pages badges, status icons, disabled
-native widgets, and folder covers.
-
-WHY ONE COORDINATOR INSTEAD OF ELEVEN PATCHES
-Each source patch independently wrapped MosaicMenuItem.paintTo/init/update
-via userpatch. That's fine for static files loaded once, but breaks down
-for a plugin with runtime-toggleable settings:
-  1. You can't cleanly "unpatch" a wrapped method - turning a setting off
-     has to be a live check inside the wrapper, not a re-patch.
-  2. Several source patches independently swapped the SAME upvalue (the
-     local ImageWidget inside MosaicMenuItem.update's closure) to do
-     aspect-ratio stretching - only one implementation can own that swap.
-This module installs exactly ONE init/update/paintTo/free override on
-MosaicMenuItem, guarded by a single `patched_vos` flag. Every feature is an
-ordinary function call gated by a live settings read, so toggling anything
-in settings.settings.coverbrowser takes effect on the next repaint with no
-restart and no re-patching.
-
-WHAT DIDN'T CARRY OVER 1:1
-- 2-new-collections-star.lua and 2-hide-pagination.lua: folded into this
-  file (see the "collection star" and "hide pagination" feature sections).
-  They keep their own independent enabled_modules.* toggles and their own
-  settings (settings.collection_star, settings.hide_pagination), so the
-  old standalone module files are gone.
-- 2--disable-all-CB-widgets.lua: its progress-bar/description-hint pieces
-  survive as `progress_bar.hide_native` and `disable_description_hint`
-  below; its collection-star piece is dropped for the same reason as
-  above (toggle collection_star off instead).
-- 2-rounded-folder-covers.lua's own CoverBrowser-native settings-menu
-  injection (BookInfoManager:getSetting/toggleSetting) is dropped in
-  favor of this plugin's own SettingsManager (settings.coverbrowser.*).
+Visual Overhaul Module (vos.lua) - unified coordinator for every cover-grid visual patch: rounded corners, stretched covers, series indicator, faded finished books, progress bar, percent/pages badges, status icons, disabled native widgets, and folder covers.
 --]] --
 
 local AlphaContainer = require("ui/widget/container/alphacontainer")
@@ -118,11 +86,11 @@ local DEFAULTS = {
 
     -- Shared by stretch_covers (book covers) and folder_covers (folder
     -- images) - both used to duplicate this exact aspect-ratio math.
-    cover_aspect_ratio = {ratio_w = 2, ratio_h = 3, stretch_limit = 50, fill = false},
-    stretch_covers = {enabled = false},
+    cover_aspect_ratio = {ratio_w = 2, ratio_h = 3, stretch_limit = 50, fill = true},
+    stretch_covers = {enabled = true},
 
     series_indicator = {
-        style = "off", -- "off" | "badge" | "bar"
+        style = "bage", -- "off" | "badge" | "bar"
         font_size = 11,
         border_thickness = 1,
         border_corner_radius = 9,
@@ -131,7 +99,7 @@ local DEFAULTS = {
         background_color = "#E7E7E7"
     },
 
-    faded_finished = {enabled = false, fading_amount = 0.5},
+    faded_finished = {enabled = true, fading_amount = 0.5},
 
     progress_bar = {
         enabled = true,
@@ -151,16 +119,16 @@ local DEFAULTS = {
         border_color = "#000000"
     },
 
-    percent_badge = {enabled = false, text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
+    percent_badge = {enabled = true, text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
 
     pages_badge = {enabled = false, font_size = 0.95, border_thickness = 2, border_corner_radius = 12, move_from_border = 8},
 
-    status_icons = {enabled = false},
+    status_icons = {enabled = true},
 
-    disable_description_hint = false,
+    disable_description_hint = true,
 
     folder_covers = {
-        enabled = false,
+        enabled = true,
         show_folder_name = true,
         name_centered = true,
         file_count_size = 14,
@@ -186,11 +154,11 @@ end
 -- top level (settings.collection_star), not under coverbrowser, so the saved
 -- settings stay compatible with the old standalone module.
 local COLLECTION_STAR_DEFAULTS = {
-    size = 30,
+    size = 20,
     x_offset = 6,
     y_offset = 6,
     position = "top_left", -- "top_left" | "top_right" | "bottom_left" | "bottom_right"
-    use_background_circle = false,
+    use_background_circle = true,
     background_color = "#000000"
 }
 
@@ -212,7 +180,7 @@ local ROUND_CORNER_ICONS = {
 }
 
 -- ===========================================================================
--- Feature: rounded corners (2--rounded-covers.lua)
+-- Feature: rounded corners
 -- ===========================================================================
 
 local function paintRoundedCorners(bb, target, x, y, self_widget)
@@ -250,9 +218,7 @@ local function paintRoundedCorners(bb, target, x, y, self_widget)
 end
 
 -- ===========================================================================
--- Feature: series indicator - "badge" style (2-series-badge-numbered.lua)
--- or "bar" style (2-series-indicator.lua), mutually exclusive via
--- series_indicator.style
+-- Feature: series indicator - "badge" style or "bar" style
 -- ===========================================================================
 
 local function initSeriesBadge(self_widget, c)
@@ -332,7 +298,7 @@ local function paintSeriesIndicatorBar(self_widget, bb, target, x)
 end
 
 -- ===========================================================================
--- Feature: faded finished books (20-faded-finished-books.lua)
+-- Feature: faded finished books
 -- ===========================================================================
 
 local function paintFadedFinished(bb, target, x, y, self_widget, c)
@@ -346,8 +312,7 @@ local function paintFadedFinished(bb, target, x, y, self_widget, c)
 end
 
 -- ===========================================================================
--- Feature: progress bar - mono (2-new-progress-bar.lua) or colored
--- (2-new-progress-bar-colored.lua), merged via progress_bar.colored
+-- Feature: progress bar - mono or colored
 -- ===========================================================================
 
 local function paintRoundedRectRGB32(bb, x, y, w, h, color_rgb, radius)
@@ -423,7 +388,7 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
 end
 
 -- ===========================================================================
--- Feature: percent badge (2-percent-badge.lua)
+-- Feature: percent badge
 -- ===========================================================================
 
 local function paintPercentBadge(bb, target, x, y, self_widget, c)
@@ -486,7 +451,7 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
 end
 
 -- ===========================================================================
--- Feature: pages badge (2-pages-badge.lua)
+-- Feature: pages badge
 -- ===========================================================================
 
 local function paintPagesBadge(bb, target, x, y, self_widget, c)
@@ -548,7 +513,7 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
 end
 
 -- ===========================================================================
--- Feature: status icons (2-new-status-icons.lua)
+-- Feature: status icons
 -- ===========================================================================
 
 local STATUS_ICON_ALPHA_NAMES = {
@@ -626,9 +591,7 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
 end
 
 -- ===========================================================================
--- Feature: collection star (formerly modules/collection_star.lua) - a star
--- overlay on the covers of books that belong to a collection. Icons come
--- from the plugin's own resources/ folder (star.white.svg).
+-- Feature: collection star
 -- ===========================================================================
 
 local function paintCollectionStar(bb, x, y, self_widget)
@@ -689,9 +652,7 @@ local function paintCollectionStar(bb, x, y, self_widget)
 end
 
 -- ===========================================================================
--- Feature: disable native description hint (part of
--- 2--disable-all-CB-widgets.lua) - installed once, gated live so it stays
--- toggleable, unlike the original's permanent override.
+-- Feature: disable native description hint
 -- ===========================================================================
 
 local function installDescriptionHintOverride()
@@ -709,10 +670,7 @@ local function installDescriptionHintOverride()
 end
 
 -- ===========================================================================
--- Feature: folder covers (2-rounded-folder-covers.lua) - the big one.
--- Renders a custom cover for directories: a ".cover.*" image if present,
--- otherwise the first book's cover, stretched + rounded + with an item
--- count badge and folder-name label.
+-- Feature: folder covers
 -- ===========================================================================
 
 local FolderCoverSpec = {name = ".cover", exts = {".jpg", ".jpeg", ".png", ".webp", ".gif"}}
@@ -1025,7 +983,7 @@ local function installFileChooserCache()
         return cached_list[key]
     end
 
-    logger.info("VisualOverhaul/CoverBrowserModule: FileChooser.getListItem cache installed")
+    logger.info("VisualOverhaul: FileChooser.getListItem cache installed")
 end
 
 -- ===========================================================================
@@ -1147,7 +1105,7 @@ local function installHidePaginationOverride()
         end
     end
 
-    logger.info("VisualOverhaul/CoverBrowserModule: Menu.init pagination-hide installed")
+    logger.info("VisualOverhaul: Menu.init pagination-hide installed")
 end
 
 -- ===========================================================================
@@ -1219,7 +1177,7 @@ local function preserveUpvalues(orig_fn, logic)
         "end\n"
     local factory = loadstring(chunk, "=vos.preserveUpvalues")
     if not factory then
-        logger.warn("VisualOverhaul/CoverBrowserModule: failed to compile upvalue-preserving wrapper")
+        logger.warn("VisualOverhaul: failed to compile upvalue-preserving wrapper")
         return logic
     end
     local wrapper = factory()
@@ -1253,7 +1211,7 @@ local function patchMosaicMenuItem()
     local MosaicMenu = require("mosaicmenu")
     local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
     if not MosaicMenuItem then
-        logger.warn("VisualOverhaul/CoverBrowserModule: could not find MosaicMenuItem")
+        logger.warn("VisualOverhaul: could not find MosaicMenuItem")
         return
     end
     if MosaicMenuItem.patched_vos then
@@ -1316,9 +1274,9 @@ local function patchMosaicMenuItem()
             end
 
             debug.setupvalue(TRUE_ORIG_UPDATE, setupvalue_n, StretchingImageWidget)
-            logger.info("VisualOverhaul/CoverBrowserModule: cover stretch swap installed")
+            logger.info("VisualOverhaul: cover stretch swap installed")
         else
-            logger.warn("VisualOverhaul/CoverBrowserModule: could not find ImageWidget upvalue for stretching")
+            logger.warn("VisualOverhaul: could not find ImageWidget upvalue for stretching")
         end
     end
 
@@ -1501,7 +1459,7 @@ local function patchMosaicMenuItem()
     installDescriptionHintOverride()
     installFileChooserCache()
 
-    logger.info("VisualOverhaul/CoverBrowserModule: MosaicMenuItem patched")
+    logger.info("VisualOverhaul: MosaicMenuItem patched")
 end
 
 -- ===========================================================================
