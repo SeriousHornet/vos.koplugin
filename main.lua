@@ -20,6 +20,7 @@ local MenuSizeModule = require("modules/menu_size")
 local IncognitoModule = require("modules/incognito")
 local MenuTextOverrides = require("modules/menu_text_overrides")
 local PageNumberSubtitles = require("modules/page_number_subtitles")
+local QuickSettingsModule = require("modules/quick_settings")
 
 -- Main Plugin Class
 local VisualOverhaul =
@@ -43,6 +44,7 @@ function VisualOverhaul:init()
         IncognitoModule:new {plugin = self, settings = self.settings},
         MenuTextOverrides:new {plugin = self, settings = self.settings},
         PageNumberSubtitles:new {plugin = self, settings = self.settings},
+        QuickSettingsModule:new {plugin = self, settings = self.settings},
     }
     for _, module in ipairs(self.extra_modules) do
         logger.info("VisualOverhaul: Initializing Extras module", module.name)

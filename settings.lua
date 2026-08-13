@@ -196,6 +196,7 @@ function SettingsManager:load()
     self:init()
     local ok, saved = pcall(dofile, self.settings_file)
     if ok and type(saved) == "table" then
+        local had_quick_settings = saved.extras and saved.extras.quick_settings
         local pages_badge = saved.coverbrowser and saved.coverbrowser.pages_badge
         if pages_badge and pages_badge.move_from_border ~= nil then
             pages_badge.x_offset = pages_badge.x_offset or pages_badge.move_from_border
@@ -208,9 +209,21 @@ function SettingsManager:load()
         end
         -- Backfill any keys introduced since this settings file was saved.
         deepFill(saved, self:loadDefaults())
+        if not had_quick_settings then
+            local legacy = G_reader_settings:readSetting("quick_settings_panel")
+            if type(legacy) == "table" then
+                deepFill(legacy, saved.extras.quick_settings)
+                saved.extras.quick_settings = legacy
+            end
+        end
         self.settings = saved
     else
         self:loadDefaults()
+        local legacy = G_reader_settings:readSetting("quick_settings_panel")
+        if type(legacy) == "table" then
+            deepFill(legacy, self.settings.extras.quick_settings)
+            self.settings.extras.quick_settings = legacy
+        end
     end
     logger.info("VisualOverhaul: Settings loaded")
 end
@@ -332,6 +345,35 @@ function SettingsManager:loadDefaults()
                 pathchooser = true,
                 history = true,
                 collections = true
+            },
+            quick_settings = {
+                enabled = true,
+                button_order = {
+                    "wifi", "night", "rotate", "usb", "search", "quickrss",
+                    "cloud", "zlibrary", "calibre", "notion", "streak", "opds",
+                    "restart", "exit", "sleep", "screenshot"
+                },
+                show_buttons = {
+                    wifi = true,
+                    night = true,
+                    rotate = true,
+                    usb = true,
+                    search = false,
+                    quickrss = false,
+                    cloud = false,
+                    zlibrary = false,
+                    calibre = false,
+                    notion = false,
+                    streak = false,
+                    opds = false,
+                    restart = true,
+                    exit = true,
+                    sleep = true,
+                    screenshot = true
+                },
+                show_frontlight = true,
+                show_warmth = true,
+                open_on_start = false
             }
         },
         -- CoverBrowser (vos.lua) cover enhancements + badges settings

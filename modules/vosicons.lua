@@ -20,6 +20,10 @@ local function iconFile(name)
     if lfs.attributes(path, "mode") == "file" then
         return path
     end
+    path = VOS_RESOURCE_DIR .. "extra/" .. name .. ".svg"
+    if lfs.attributes(path, "mode") == "file" then
+        return path
+    end
     return nil
 end
 
