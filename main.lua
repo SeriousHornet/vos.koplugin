@@ -13,6 +13,13 @@ local _ = require("gettext")
 local SettingsManager = require("settings")
 local NavbarModule = require("modules/navbar")
 local CoverBrowserModule = require("modules/vos")
+local UIFontModule = require("modules/ui_font")
+local BrowserHideUnderline = require("modules/browser_hide_underline")
+local BrowserUpFolder = require("modules/browser_up_folder")
+local MenuSizeModule = require("modules/menu_size")
+local IncognitoModule = require("modules/incognito")
+local MenuTextOverrides = require("modules/menu_text_overrides")
+local PageNumberSubtitles = require("modules/page_number_subtitles")
 
 -- Main Plugin Class
 local VisualOverhaul =
@@ -27,6 +34,20 @@ function VisualOverhaul:init()
     -- Load settings
     self.settings = SettingsManager:new()
     self.settings:load()
+
+    self.extra_modules = {
+        UIFontModule:new {plugin = self, settings = self.settings},
+        BrowserHideUnderline:new {plugin = self, settings = self.settings},
+        BrowserUpFolder:new {plugin = self, settings = self.settings},
+        MenuSizeModule:new {plugin = self, settings = self.settings},
+        IncognitoModule:new {plugin = self, settings = self.settings},
+        MenuTextOverrides:new {plugin = self, settings = self.settings},
+        PageNumberSubtitles:new {plugin = self, settings = self.settings},
+    }
+    for _, module in ipairs(self.extra_modules) do
+        logger.info("VisualOverhaul: Initializing Extras module", module.name)
+        module:init()
+    end
 
     -- Initialize modules based on settings
     if self.settings:isEnabled("navbar") then
@@ -68,6 +89,12 @@ end
 
 function VisualOverhaul:refresh()
     logger.info("VisualOverhaul: Refreshing...")
+
+    for _, module in ipairs(self.extra_modules or {}) do
+        if module.reinit then
+            module:reinit()
+        end
+    end
 
     -- Reinitialize modules
     if self.settings:isEnabled("navbar") then

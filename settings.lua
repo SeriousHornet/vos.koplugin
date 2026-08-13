@@ -314,6 +314,26 @@ function SettingsManager:loadDefaults()
             use_background_circle = true,
             background_color = "#000000"
         },
+        -- Optional community-patch integrations
+        extras = {
+            ui_font_name = "Noto Sans",
+            hide_last_visited_underline = true,
+            hide_up_folder = true,
+            hide_empty_folders = false,
+            auto_menu_size = true,
+            incognito_enabled = true,
+            menu_text = {
+                replace_underscores = true,
+                restore_articles = true
+            },
+            page_subtitles = {
+                filemanager = true,
+                use_shortcut_names = true,
+                pathchooser = true,
+                history = true,
+                collections = true
+            }
+        },
         -- CoverBrowser (vos.lua) cover enhancements + badges settings
         coverbrowser = {
             rounded_corners = {
@@ -494,6 +514,18 @@ function SettingsManager:getMainMenu(plugin)
         {
             text = _("Clean up"),
             sub_item_table = self:getCleanupMenu(plugin)
+        },
+        {
+            text = _("Extras"),
+            sub_item_table_func = function()
+                local items = {}
+                for _, module in ipairs(plugin.extra_modules or {}) do
+                    if module.getMenuItem then
+                        table.insert(items, module:getMenuItem())
+                    end
+                end
+                return items
+            end
         },
         {
             text = _("Reset to Defaults"),
