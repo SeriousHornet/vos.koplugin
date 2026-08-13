@@ -76,6 +76,31 @@ local function colorFromHex(hex)
     return Blitbuffer.colorFromString(hex)
 end
 
+local function rgbFromHex(hex)
+    if not hex or not hex:match("^#[0-9a-fA-F]+$") or #hex ~= 7 then
+        return {0, 0, 0}
+    end
+    return {
+        tonumber(hex:sub(2, 3), 16),
+        tonumber(hex:sub(4, 5), 16),
+        tonumber(hex:sub(6, 7), 16)
+    }
+end
+
+local function paintRoundedRectRGB32(bb, x, y, w, h, color_rgb, radius)
+    if not color_rgb then
+        bb:paintRoundedRect(x, y, w, h, Blitbuffer.COLOR_BLACK, radius)
+        return
+    end
+    local tmp_bb = Blitbuffer.new(w, h)
+    tmp_bb:paintRoundedRect(0, 0, w, h, Blitbuffer.COLOR_WHITE, radius)
+    bb:colorblitFromRGB32(
+        tmp_bb, x, y, 0, 0, w, h,
+        Blitbuffer.ColorRGB32(color_rgb[1], color_rgb[2], color_rgb[3], 0xFF)
+    )
+    tmp_bb:free()
+end
+
 -- ===========================================================================
 -- Default settings + deep-fill (so this module works even if settings.lua
 -- hasn't been updated with a matching "coverbrowser" defaults block yet)
@@ -105,10 +130,13 @@ local DEFAULTS = {
         enabled = true,
         colored = false,
         hide_native = true,
+        position = "bottom",
         bar_h = 9,
         bar_radius = 3,
         inset_x = 6,
         inset_y = 12,
+        move_on_x = 0,
+        move_on_y = 0,
         gap_to_icon = 0,
         track_color = "#F4F0EC",
         fill_color = "#555555",
@@ -119,9 +147,9 @@ local DEFAULTS = {
         border_color = "#000000"
     },
 
-    percent_badge = {enabled = true, text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
+    percent_badge = {enabled = true, position = "top_right", text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
 
-    pages_badge = {enabled = false, font_size = 0.95, border_thickness = 2, border_corner_radius = 12, move_from_border = 8},
+    pages_badge = {enabled = false, position = "bottom_left", font_size = 0.95, border_thickness = 2, border_corner_radius = 12, x_offset = 8, y_offset = 8},
 
     status_icons = {enabled = true},
 
@@ -241,13 +269,13 @@ local function initSeriesBadge(self_widget, c)
             radius = Screen:scaleBySize(scfg.border_corner_radius),
             color = colorFromHex(scfg.border_color),
             bordersize = scfg.border_thickness,
-            background = colorFromHex(scfg.background_color),
             padding = Screen:scaleBySize(2),
             margin = 0,
             series_text
         }
 
         self_widget._series_text = series_text
+        self_widget._series_badge_background_rgb = rgbFromHex(scfg.background_color)
         self_widget.has_series_badge = true
     end
 end
@@ -264,8 +292,23 @@ local function paintSeriesBadge(self_widget, bb, x, y)
     local iy = 5
 
     local badge_size = self_widget.series_badge:getSize()
-    local badge_x = target.dimen.x + ix + (d_w - badge_size.w) / 2
-    local badge_y = target.dimen.y + iy + (d_h - badge_size.h) / 2
+    local badge_x = math.floor(target.dimen.x + ix + (d_w - badge_size.w) / 2)
+    local badge_y = math.floor(target.dimen.y + iy + (d_h - badge_size.h) / 2)
+
+    local border = self_widget.series_badge.bordersize or 0
+    local fill_w = math.max(1, badge_size.w - 2 * border)
+    local fill_h = math.max(1, badge_size.h - 2 * border)
+    local fill_radius = math.max(0, (self_widget.series_badge.radius or 0) - border)
+    fill_radius = math.min(fill_radius, math.floor(math.min(fill_w, fill_h) / 2))
+    paintRoundedRectRGB32(
+        bb,
+        badge_x + border,
+        badge_y + border,
+        fill_w,
+        fill_h,
+        self_widget._series_badge_background_rgb,
+        fill_radius
+    )
 
     self_widget.series_badge:paintTo(bb, badge_x, badge_y)
 end
@@ -315,17 +358,6 @@ end
 -- Feature: progress bar - mono or colored
 -- ===========================================================================
 
-local function paintRoundedRectRGB32(bb, x, y, w, h, color_rgb, radius)
-    if not color_rgb then
-        bb:paintRoundedRect(x, y, w, h, Blitbuffer.COLOR_BLACK, radius)
-        return
-    end
-    local tmp_bb = Blitbuffer.new(w, h)
-    tmp_bb:paintRoundedRect(0, 0, w, h, Blitbuffer.COLOR_WHITE, radius)
-    bb:colorblitFromRGB32(tmp_bb, x, y, 0, 0, w, h, Blitbuffer.ColorRGB32(color_rgb[1], color_rgb[2], color_rgb[3], 0xFF))
-    tmp_bb:free()
-end
-
 local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_size)
     local pf = self_widget.percent_finished
     -- Both source patches skip entirely once a book is complete.
@@ -345,13 +377,15 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
 
     local INSET_X = Screen:scaleBySize(pcfg.inset_x)
     local INSET_Y = Screen:scaleBySize(pcfg.inset_y)
-    local left = ix + INSET_X
-    local right = ix + iw - INSET_X
+    local MOVE_X = Screen:scaleBySize(pcfg.move_on_x)
+    local MOVE_Y = Screen:scaleBySize(pcfg.move_on_y)
+    local left = ix + INSET_X + MOVE_X
+    local right = ix + iw - INSET_X + MOVE_X
 
     local has_corner_icon =
         (self_widget.been_opened or self_widget.do_hint_opened) and
         (self_widget.status == "reading" or self_widget.status == "abandoned")
-    if has_corner_icon and corner_mark_size then
+    if pcfg.position ~= "top" and has_corner_icon and corner_mark_size then
         right = right - (corner_mark_size + Screen:scaleBySize(pcfg.gap_to_icon))
     end
 
@@ -359,7 +393,12 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
     local BAR_H = Screen:scaleBySize(pcfg.bar_h)
     local BAR_RADIUS = Screen:scaleBySize(pcfg.bar_radius)
     local bar_x = math.floor(left + 0.5)
-    local bar_y = math.floor(iy + ih - INSET_Y - BAR_H + 0.5)
+    local bar_y
+    if pcfg.position == "top" then
+        bar_y = math.floor(iy + INSET_Y + MOVE_Y + 0.5)
+    else
+        bar_y = math.floor(iy + ih - INSET_Y - BAR_H + MOVE_Y + 0.5)
+    end
     local BORDER_W = Screen:scaleBySize(pcfg.border_w)
 
     local p = math.max(0, math.min(1, pf))
@@ -390,6 +429,17 @@ end
 -- ===========================================================================
 -- Feature: percent badge
 -- ===========================================================================
+
+local function getCornerPosition(position, left, top, width, height, item_w, item_h, x_offset, y_offset)
+    if position == "top_left" then
+        return left + x_offset, top + y_offset
+    elseif position == "bottom_left" then
+        return left + x_offset, top + height - item_h - y_offset
+    elseif position == "bottom_right" then
+        return left + width - item_w - x_offset, top + height - item_h - y_offset
+    end
+    return left + width - item_w - x_offset, top + y_offset
+end
 
 local function paintPercentBadge(bb, target, x, y, self_widget, c)
     if self_widget.is_directory or self_widget.status == "complete" or not self_widget.percent_finished then
@@ -429,14 +479,16 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
 
     local fx = x + math.floor((self_widget.width - target.dimen.w) / 2)
     local fy = y + math.floor((self_widget.height - target.dimen.h) / 2)
-    local fw = target.dimen.w
+    local fw, fh = target.dimen.w, target.dimen.h
 
     local percent_badge_icon = IconWidget:new {icon = "percent.badge", file = vosicons.iconFile("percent.badge"), alpha = true}
     percent_badge_icon.width = BADGE_W
     percent_badge_icon.height = BADGE_H
 
-    local bx = math.floor(fx + fw - BADGE_W - INSET_X)
-    local by = math.floor(fy + INSET_Y)
+    local bx, by = getCornerPosition(
+        pcfg.position, fx, fy, fw, fh, BADGE_W, BADGE_H, INSET_X, INSET_Y
+    )
+    bx, by = math.floor(bx), math.floor(by)
 
     percent_badge_icon:paintTo(bb, bx, by)
 
@@ -502,14 +554,19 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     }
 
     local cover_left = x + math.floor((self_widget.width - target.dimen.w) / 2)
-    local cover_bottom = y + self_widget.height - math.floor((self_widget.height - target.dimen.h) / 2)
+    local cover_top = y + math.floor((self_widget.height - target.dimen.h) / 2)
+    local cover_w, cover_h = target.dimen.w, target.dimen.h
+    local badge_w = pages_badge_frame:getSize().w
     local badge_h = pages_badge_frame:getSize().h
 
-    local pad = Screen:scaleBySize(pcfg.move_from_border)
-    local pos_x = cover_left + pad
-    local pos_y = cover_bottom - (pad + badge_h)
+    local x_offset = Screen:scaleBySize(pcfg.x_offset)
+    local y_offset = Screen:scaleBySize(pcfg.y_offset)
+    local pos_x, pos_y = getCornerPosition(
+        pcfg.position, cover_left, cover_top, cover_w, cover_h,
+        badge_w, badge_h, x_offset, y_offset
+    )
 
-    pages_badge_frame:paintTo(bb, pos_x, pos_y)
+    pages_badge_frame:paintTo(bb, math.floor(pos_x), math.floor(pos_y))
 end
 
 -- ===========================================================================
@@ -1447,6 +1504,7 @@ local function patchMosaicMenuItem()
                 self.series_badge:free(true)
                 self.series_badge = nil
             end
+            self._series_badge_background_rgb = nil
             self.series_index = nil
             self.has_series_badge = nil
         end
