@@ -224,7 +224,8 @@ function SettingsManager:loadDefaults()
             collection_star = false,
             faded_finished = false,
             rounded_corners = false,
-            hide_pagination = false
+            hide_pagination = false,
+            hide_collection_star = true
         },
         -- Navbar settings
         navbar = {
@@ -317,13 +318,13 @@ function SettingsManager:loadDefaults()
                 ratio_w = 2,
                 ratio_h = 3,
                 stretch_limit = 50,
-                fill = true
+                fill = false
             },
             stretch_covers = {
                 enabled = true
             },
             series_indicator = {
-                style = "off", -- "off" | "badge" | "bar"
+                style = "badge", -- "off" | "badge" | "bar"
                 font_size = 11,
                 border_thickness = 1,
                 border_corner_radius = 9,
@@ -337,7 +338,7 @@ function SettingsManager:loadDefaults()
             },
             progress_bar = {
                 enabled = true,
-                colored = false,
+                colored = true,
                 hide_native = true,
                 position = "bottom",
                 bar_h = 9,
@@ -371,6 +372,9 @@ function SettingsManager:loadDefaults()
                 font_size = 0.95,
                 border_thickness = 2,
                 border_corner_radius = 12,
+                text_color = "#FFFFFF",
+                border_color = "#888888",
+                background_color = "#333333",
                 x_offset = 8,
                 y_offset = 8
             },
@@ -568,7 +572,11 @@ function SettingsManager:getCleanupMenu(plugin)
                 end
             end
         },
-        checkboxItem(self, cb.progress_bar, "hide_native", "Hide old progress bar", plugin)
+        checkboxItem(self, cb.progress_bar, "hide_native", "Hide default progress bar", plugin),
+        checkboxItem(
+            self, self.settings.enabled_modules, "hide_collection_star",
+            "Hide default collection star", plugin
+        )
     }
 end
 
@@ -717,7 +725,15 @@ function SettingsManager:getBadgesMenu(plugin)
                 numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
                 numberItem(self, cb.pages_badge, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
                 numberItem(self, cb.pages_badge, "x_offset", "Horizontal offset", plugin, {min = -300, max = 300}),
-                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, {min = -300, max = 300})
+                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, {min = -300, max = 300}),
+                {
+                    text = _("Colors"),
+                    sub_item_table = {
+                        colorItem(self, cb.pages_badge, "text_color", "Text color", plugin),
+                        colorItem(self, cb.pages_badge, "background_color", "Background color", plugin),
+                        colorItem(self, cb.pages_badge, "border_color", "Border color", plugin)
+                    }
+                }
             }
         },
 		{
