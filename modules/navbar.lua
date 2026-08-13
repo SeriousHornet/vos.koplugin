@@ -19,6 +19,7 @@ how the original patch behaved.
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
+local DataStorage = require("datastorage")
 local Device = require("device")
 local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
@@ -45,6 +46,22 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local logger = require("logger")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
+
+local function customIconFile(name)
+    if not name or name == "" then
+        return
+    end
+    local base = DataStorage:getDataDir() .. "/icons/" .. name
+    if name:match("%.svg$") or name:match("%.png$") then
+        return lfs.attributes(base, "mode") == "file" and base or nil
+    end
+    for _, extension in ipairs({".svg", ".png"}) do
+        local path = base .. extension
+        if lfs.attributes(path, "mode") == "file" then
+            return path
+        end
+    end
+end
 
 -- ===========================================================================
 -- Module-level (singleton) state - shared across every NavbarModule instance
@@ -718,11 +735,25 @@ local function createTabWidget(tab, tab_w, is_active)
 
     local use_bold = styled and c.active_tab_bold
 
+    -- Let KOReader resolve custom icons from <data>/icons. Built-in VOS tabs
+    -- keep using the plugin resources so they do not require copied files.
+    local icon_file = tab.is_custom and customIconFile(tab.icon) or vosicons.iconFile(tab.icon)
     local icon
     if active_color then
-        icon = ColorIconWidget:new {icon = tab.icon, file = vosicons.iconFile(tab.icon), width = navbar_icon_size, height = navbar_icon_size, _tint_color = active_color}
+        icon = ColorIconWidget:new {
+            icon = tab.icon,
+            file = icon_file,
+            width = navbar_icon_size,
+            height = navbar_icon_size,
+            _tint_color = active_color
+        }
     else
-        icon = IconWidget:new {icon = tab.icon, file = vosicons.iconFile(tab.icon), width = navbar_icon_size, height = navbar_icon_size}
+        icon = IconWidget:new {
+            icon = tab.icon,
+            file = icon_file,
+            width = navbar_icon_size,
+            height = navbar_icon_size
+        }
     end
 
     local label

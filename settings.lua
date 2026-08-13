@@ -13,6 +13,7 @@ local InfoMessage = require("ui/widget/infomessage")
 local logger = require("logger")
 local Screen = require("device").screen
 local _ = require("gettext")
+local T = require("ffi/util").template
 
 local SettingsManager = {
     settings_file = nil,
@@ -1579,8 +1580,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         items,
                         {
                             text_func = function()
-                                local detail = ct.source == "folder" and "📁" or (ct.fm_key and "🔌" or "⚡")
-                                return ct.label .. "  [" .. detail .. "]"
+                                return ct.label
                             end,
                             checked_func = function()
                                 return navbar.show_tabs[ct.id]
@@ -1635,8 +1635,12 @@ function SettingsManager:getNavbarMenu(plugin)
                                     local icon_dlg
                                     icon_dlg =
                                         InputDialog:new {
-                                        title = _("Icon filename"),
-                                        hint = _("e.g., appbar.filebrowser"),
+                                        title = _("Icon name"),
+                                        hint = T(
+                                            _("appbar.filebrowser"),
+                                            "my_icon",
+                                            DataStorage:getDataDir() .. "/icons"
+                                        ),
                                         input = "appbar.filebrowser",
                                         buttons = {
                                             {
@@ -1647,7 +1651,10 @@ function SettingsManager:getNavbarMenu(plugin)
                                                     text = _("Next"),
                                                     is_enter_default = true,
                                                     callback = function()
-                                                        local icon = icon_dlg:getInputText() or "appbar.filebrowser"
+                                                        local icon = icon_dlg:getInputText()
+                                                        if not icon or icon == "" then
+                                                            icon = "appbar.filebrowser"
+                                                        end
                                                         UIManager:close(icon_dlg)
                                                         local util = require("util")
                                                         local folder_name = select(2, util.splitFilePathName(dir_path))
@@ -1701,9 +1708,8 @@ function SettingsManager:getNavbarMenu(plugin)
                                                                             UIManager:show(
                                                                                 InfoMessage:new {
                                                                                     text = _(
-                                                                                        "Folder tab added!"
+                                                                                        "Folder tab added! Place the icon in 'koreader/icons' folder and restart Koreader."
                                                                                     ),
-                                                                                    timeout = 2
                                                                                 }
                                                                             )
                                                                         end
