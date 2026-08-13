@@ -157,11 +157,11 @@ local DEFAULTS = {
 
     -- Shared by stretch_covers (book covers) and folder_covers (folder
     -- images) - both used to duplicate this exact aspect-ratio math.
-    cover_aspect_ratio = {ratio_w = 2, ratio_h = 3, stretch_limit = 50, fill = true},
+    cover_aspect_ratio = {ratio_w = 2, ratio_h = 3, stretch_limit = 50, fill = false},
     stretch_covers = {enabled = true},
 
     series_indicator = {
-        style = "bage", -- "off" | "badge" | "bar"
+        style = "badge", -- "off" | "badge" | "bar"
         font_size = 11,
         border_thickness = 1,
         border_corner_radius = 9,
@@ -458,15 +458,12 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
     local fill_w = math.max(1, math.floor(bar_w * p + 0.5))
 
     if pcfg.colored then
-        bb:paintRoundedRect(
-            bar_x - BORDER_W,
-            bar_y - BORDER_W,
-            bar_w + 2 * BORDER_W,
-            BAR_H + 2 * BORDER_W,
-            Blitbuffer.COLOR_BLACK,
+        paintRoundedBadgeRGB32(
+            bb, bar_x - BORDER_W, bar_y - BORDER_W,
+            bar_w + 2 * BORDER_W, BAR_H + 2 * BORDER_W,
+            BORDER_W, rgbFromHex(pcfg.border_color), rgbFromHex(pcfg.track_color),
             BAR_RADIUS + BORDER_W
         )
-        bb:paintRoundedRect(bar_x, bar_y, bar_w, BAR_H, Blitbuffer.COLOR_LIGHT_GRAY, BAR_RADIUS)
         local fill_rgb = (self_widget.status == "abandoned") and pcfg.abandoned_color_rgb or pcfg.fill_color_rgb
         paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     else

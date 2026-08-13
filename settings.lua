@@ -317,13 +317,13 @@ function SettingsManager:loadDefaults()
                 ratio_w = 2,
                 ratio_h = 3,
                 stretch_limit = 50,
-                fill = true
+                fill = false
             },
             stretch_covers = {
                 enabled = true
             },
             series_indicator = {
-                style = "off", -- "off" | "badge" | "bar"
+                style = "badge", -- "off" | "badge" | "bar"
                 font_size = 11,
                 border_thickness = 1,
                 border_corner_radius = 9,
