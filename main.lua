@@ -41,7 +41,7 @@ function VisualOverhaul:init()
 
     if
         self.settings:isEnabled("coverbrowser") or self.settings:isEnabled("hide_pagination") or
-            self.settings:isEnabled("collection_star")
+            self.settings:isEnabled("collection_star") or self.settings:isEnabled("hide_collection_star")
      then
         logger.info("VisualOverhaul: Initializing CoverBrowser module")
         self.coverbrowser =
@@ -60,7 +60,7 @@ end
 
 function VisualOverhaul:addToMainMenu(menu_items)
     menu_items.visual_overhaul = {
-        text = _("Visual Overhaul Suite"),
+        text = _("Visual Overhaul Suite (VOS)"),
         sorting_hint = "tools",
         sub_item_table = self.settings:getMainMenu(self)
     }
@@ -88,7 +88,8 @@ function VisualOverhaul:refresh()
 
     if
         self.coverbrowser or self.settings:isEnabled("coverbrowser") or
-            self.settings:isEnabled("hide_pagination") or self.settings:isEnabled("collection_star")
+            self.settings:isEnabled("hide_pagination") or self.settings:isEnabled("collection_star") or
+            self.settings:isEnabled("hide_collection_star")
      then
         if not self.coverbrowser then
             -- A module toggle was switched on at runtime; install the patches now.
