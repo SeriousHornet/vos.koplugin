@@ -6,22 +6,20 @@ local AlphaContainer = require("ui/widget/container/alphacontainer")
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
 local BookInfoManager = require("bookinfomanager")
-local BottomContainer = require("ui/widget/container/bottomcontainer")
 local CenterContainer = require("ui/widget/container/centercontainer")
+local CustomPositionContainer = require("ui/widget/container/custompositioncontainer")
 local FileChooser = require("ui/widget/filechooser")
 local Font = require("ui/font")
 local FrameContainer = require("ui/widget/container/framecontainer")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
-local RightContainer = require("ui/widget/container/rightcontainer")
 local Screen = require("device").screen
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local vosicons = require("modules/vosicons")
 local Menu = require("ui/widget/menu")
 local TextWidget = require("ui/widget/textwidget")
-local TopContainer = require("ui/widget/container/topcontainer")
 local UIManager = require("ui/uimanager")
 local VerticalSpan = require("ui/widget/verticalspan")
 local userpatch = require("userpatch")
@@ -223,6 +221,8 @@ local DEFAULTS = {
         enabled = true,
         show_folder_name = true,
         name_centered = true,
+        folder_name_position = "center",
+        file_count_position = "bottom_right",
         file_count_size = 14,
         folder_font_size = 20,
         folder_border = 0.5
@@ -910,11 +910,19 @@ local function setFolderCover(self_widget, img, c)
     local fcfg = c.folder_covers
     local folder_name_widget
     if fcfg.show_folder_name then
+        local name_positions = {top = 0, center = 0.5, bottom = 1}
+        local name_frame = FrameContainer:new {
+            padding = -1,
+            bordersize = 1,
+            AlphaContainer:new {alpha = 0.75, directory}
+        }
         folder_name_widget =
-            (fcfg.name_centered and CenterContainer or TopContainer):new {
+            CustomPositionContainer:new {
             dimen = frame_dimen,
-            FrameContainer:new {padding = -1, bordersize = 1, AlphaContainer:new {alpha = 0.75, directory}},
-            overlap_align = "center"
+            horizontal_position = 0.5,
+            vertical_position = name_positions[fcfg.folder_name_position] or 0.5,
+            widget = name_frame,
+            name_frame
         }
     else
         folder_name_widget = VerticalSpan:new {width = 0}
@@ -940,20 +948,38 @@ local function setFolderCover(self_widget, img, c)
         local nbitems = TextWidget:new {text = tostring(item_count), face = Font:getFace("cfont", fcfg.file_count_size), bold = true, padding = 0}
         local nb_size = math.max(nbitems:getSize().w, nbitems:getSize().h)
         local margin = Screen:scaleBySize(5)
+        local count_positions = {
+            top_left = {0, 0},
+            top_center = {0.5, 0},
+            top_right = {1, 0},
+            center_left = {0, 0.5},
+            center_right = {1, 0.5},
+            bottom_left = {0, 1},
+            bottom_center = {0.5, 1},
+            bottom_right = {1, 1}
+        }
+        local count_position = count_positions[fcfg.file_count_position] or count_positions.bottom_right
+        local count_badge = FrameContainer:new {
+            padding = 2,
+            bordersize = 1,
+            radius = math.ceil(nb_size),
+            background = Blitbuffer.COLOR_GRAY_E,
+            CenterContainer:new {dimen = {w = nb_size, h = nb_size}, nbitems}
+        }
+        local count_dimen = {
+            w = math.max(1, frame_dimen.w - margin * 2),
+            h = math.max(1, frame_dimen.h - margin * 2)
+        }
         nbitems_widget =
-            BottomContainer:new {
+            CenterContainer:new {
             dimen = frame_dimen,
-            RightContainer:new {
-                dimen = {w = frame_dimen.w - margin, h = nb_size + margin * 2},
-                FrameContainer:new {
-                    padding = 2,
-                    bordersize = 1,
-                    radius = math.ceil(nb_size),
-                    background = Blitbuffer.COLOR_GRAY_E,
-                    CenterContainer:new {dimen = {w = nb_size, h = nb_size}, nbitems}
-                }
-            },
-            overlap_align = "center"
+            CustomPositionContainer:new {
+                dimen = count_dimen,
+                horizontal_position = count_position[1],
+                vertical_position = count_position[2],
+                widget = count_badge,
+                count_badge
+            }
         }
     else
         nbitems_widget = VerticalSpan:new {width = 0}
@@ -1514,11 +1540,6 @@ local function patchMosaicMenuItem()
         if is_dir then
             if c.folder_covers.enabled then
                 paintFolderCorners(self, bb, x, y, c)
-            elseif c.rounded_corners.enabled then
-                local target = self[1] and self[1][1] and self[1][1][1]
-                if target and target.dimen then
-                    paintRoundedCorners(bb, target, x, y, self)
-                end
             end
             return
         end

@@ -201,6 +201,11 @@ function SettingsManager:load()
             pages_badge.x_offset = pages_badge.x_offset or pages_badge.move_from_border
             pages_badge.y_offset = pages_badge.y_offset or pages_badge.move_from_border
         end
+        local folder_covers = saved.coverbrowser and saved.coverbrowser.folder_covers
+        if folder_covers and folder_covers.folder_name_position == nil
+                and folder_covers.name_centered ~= nil then
+            folder_covers.folder_name_position = folder_covers.name_centered and "center" or "top"
+        end
         -- Backfill any keys introduced since this settings file was saved.
         deepFill(saved, self:loadDefaults())
         self.settings = saved
@@ -386,6 +391,8 @@ function SettingsManager:loadDefaults()
                 enabled = true,
                 show_folder_name = true,
                 name_centered = true,
+                folder_name_position = "center",
+                file_count_position = "bottom_right",
                 file_count_size = 14,
                 folder_font_size = 20,
                 folder_border = 0.5
@@ -616,7 +623,21 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
             sub_item_table = {
                 checkboxItem(self, cb.folder_covers, "enabled", "Enable folder covers", plugin),
                 checkboxItem(self, cb.folder_covers, "show_folder_name", "Show folder name", plugin),
-                checkboxItem(self, cb.folder_covers, "name_centered", "Name centered", plugin),
+                choiceItem(self, cb.folder_covers, "folder_name_position", "Folder name position", {
+                    {label = "Top", value = "top"},
+                    {label = "Center", value = "center"},
+                    {label = "Bottom", value = "bottom"}
+                }, plugin),
+                choiceItem(self, cb.folder_covers, "file_count_position", "File count position", {
+                    {label = "Top left", value = "top_left"},
+                    {label = "Top center", value = "top_center"},
+                    {label = "Top right", value = "top_right"},
+                    {label = "Center left", value = "center_left"},
+                    {label = "Center right", value = "center_right"},
+                    {label = "Bottom left", value = "bottom_left"},
+                    {label = "Bottom center", value = "bottom_center"},
+                    {label = "Bottom right", value = "bottom_right"}
+                }, plugin),
                 numberItem(self, cb.folder_covers, "file_count_size", "File count size", plugin, {min = 6, max = 40}),
                 numberItem(self, cb.folder_covers, "folder_font_size", "Folder font size", plugin, {min = 6, max = 60}),
                 numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, {min = 0, max = 10})
