@@ -194,12 +194,15 @@ local createNavBar
 local getTabCallback
 
 local function setActiveTab(tab_id)
+    if active_tab == tab_id then
+        return
+    end
     active_tab = tab_id
     updateLayoutConstants()
     local fm = FileManager.instance
     if fm then
         injectNavbar(fm)
-        UIManager:setDirty(fm, "full")
+        UIManager:setDirty(fm, "ui")
     end
 end
 
@@ -877,7 +880,12 @@ end
 
 local function getNavbarHeight()
     local nb = createNavBar()
-    return nb and nb:getSize().h or 0
+    if not nb then
+        return 0
+    end
+    local height = nb:getSize().h
+    nb:free(true)
+    return height
 end
 
 local standalone_view_names = {history = true, collections = true, library_view = true}
@@ -907,6 +915,10 @@ injectNavbar = function(fm)
     local file_chooser
     if fm._navbar_injected then
         file_chooser = fm_ui[1] and fm_ui[1][1]
+        local old_navbar = fm_ui[1] and fm_ui[1][2]
+        if old_navbar then
+            old_navbar:free(true)
+        end
     else
         file_chooser = fm_ui[1]
     end
@@ -1319,7 +1331,7 @@ function NavbarModule:reinit()
         else
             uninjectNavbar(fm)
         end
-        UIManager:setDirty(fm, "full")
+        UIManager:setDirty(fm, "ui")
     end
 end
 

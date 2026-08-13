@@ -613,6 +613,30 @@ function SettingsManager:getMainMenu(plugin)
             end
         },
         {
+            text = _("Memory diagnostics"),
+            callback = function()
+                local rss
+                local statm = io.open("/proc/self/statm", "r")
+                if statm then
+                    local _, resident_pages = statm:read("*number", "*number")
+                    statm:close()
+                    if resident_pages then
+                        rss = resident_pages * 4096 / 1024 / 1024
+                    end
+                end
+                local lua_heap = collectgarbage("count") / 1024
+                local text = string.format("KOReader Lua heap: %.1f MiB", lua_heap)
+                if plugin and plugin.lua_heap_delta_kb then
+                    text = text .. string.format("\nVOS initialization delta: %.1f KiB", plugin.lua_heap_delta_kb)
+                end
+                if rss then
+                    text = text .. string.format("\nKOReader process RSS: %.1f MiB", rss)
+                end
+                text = text .. "\n\nRSS includes KOReader, documents, caches, and all plugins."
+                UIManager:show(InfoMessage:new{text = text})
+            end
+        },
+        {
             text = _("About"),
             callback = function()
                 UIManager:show(

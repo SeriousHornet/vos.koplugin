@@ -71,11 +71,15 @@ local function installListSubtitle(owner, expected_name, key)
     if not (menu and menu.name == expected_name and menu.title_bar) then
         return
     end
-    local base_subtitle = menu.title_bar.subtitle_widget and menu.title_bar.subtitle_widget.text or ""
+    if menu.patched_vos_page_subtitle_instance then
+        return
+    end
+    menu.patched_vos_page_subtitle_instance = true
+    menu._vos_base_subtitle = menu.title_bar.subtitle_widget and menu.title_bar.subtitle_widget.text or ""
     local orig_switchItemTable = menu.switchItemTable
     function menu:switchItemTable(title, item_table, select_number, itemmatch, subtitle)
         if subtitle then
-            base_subtitle = subtitle
+            self._vos_base_subtitle = subtitle
         end
         return orig_switchItemTable(self, title, item_table, select_number, itemmatch, subtitle)
     end
@@ -83,7 +87,7 @@ local function installListSubtitle(owner, expected_name, key)
     function menu:updatePageInfo(...)
         local result = orig_updatePageInfo(self, ...)
         local module = PageNumberSubtitles.instance
-        local subtitle = module and module:cfg()[key] and pageText(self) or base_subtitle
+        local subtitle = module and module:cfg()[key] and pageText(self) or self._vos_base_subtitle
         self.title_bar:setSubTitle(subtitle, true)
         return result
     end

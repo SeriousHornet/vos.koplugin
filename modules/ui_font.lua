@@ -78,10 +78,11 @@ function UIFontModule:patchTouchMenuItems()
         local module = UIFontModule.instance
         if module and self.item_table then
             for _, item in ipairs(self.item_table) do
-                if not item.font_func or item._vos_ui_font then
+                if not item.font_func and not item._vos_ui_font then
                     item._vos_ui_font = true
                     item.font_func = function(size)
-                        return module:getFace(size)
+                        local current = UIFontModule.instance
+                        return current and current:getFace(size)
                     end
                 end
             end

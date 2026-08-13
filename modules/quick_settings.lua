@@ -28,6 +28,21 @@ local _ = require("gettext")
 local T = require("ffi/util").template
 
 local QuickSettings = {name = "quick_settings"}
+local quick_icons = {
+    quicksettings = true,
+    quick_wifi = true,
+    quick_nightmode = true,
+    quick_rotate = true,
+    quick_usb = true,
+    quick_search = true,
+    quick_rss = true,
+    quick_cloud = true,
+    quick_streak = true,
+    quick_restart = true,
+    quick_exit = true,
+    quick_sleep = true,
+    quick_screenshot = true,
+}
 
 local button_order = {
     "wifi", "night", "rotate", "usb", "search", "quickrss", "cloud",
@@ -504,7 +519,7 @@ function QuickSettings:patchIcons()
     IconWidget.patched_vos_quick_settings = true
     local orig_new = IconWidget.new
     function IconWidget:new(options)
-        if options and options.icon then
+        if options and not options.file and quick_icons[options.icon] then
             local file = vosicons.iconFile(options.icon)
             if file then
                 options.file = file
@@ -523,12 +538,15 @@ function QuickSettings:patchMenus()
         function class:setUpdateItemTable(...)
             local result = orig_setUpdateItemTable(self, ...)
             local module = QuickSettings.instance
-            if module and module:isEnabled() and self.tab_item_table then
+            if module and module:isEnabled() and self.tab_item_table and not hasQuickSettingsTab(self) then
                 table.insert(self.tab_item_table, 1, {
                     icon = "quicksettings",
                     remember = false,
                     vos_quick_settings = true,
-                    panel = function(menu) return module:createPanel(menu) end,
+                    panel = function(menu)
+                        local current = QuickSettings.instance
+                        return current:createPanel(menu)
+                    end,
                 })
             end
             return result

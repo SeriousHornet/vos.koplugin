@@ -560,6 +560,8 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local tx = bx + math.floor((BADGE_W - ts.w) / 2)
     local ty = by + math.floor((BADGE_H - ts.h) / 2) - Screen:scaleBySize(pcfg.bump_up)
     percent_widget:paintTo(bb, math.floor(tx), math.floor(ty))
+    percent_badge_icon:free()
+    percent_widget:free()
 end
 
 -- ===========================================================================
@@ -634,6 +636,7 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     )
 
     pages_badge_frame:paintTo(bb, pos_x, pos_y)
+    pages_badge_frame:free(true)
 end
 
 -- ===========================================================================
@@ -711,6 +714,7 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
     end
     if mark then
         mark:paintTo(bb, x + ix, y + iy)
+        mark:free()
     end
 end
 
@@ -772,6 +776,7 @@ local function paintCollectionStar(bb, x, y, self_widget)
     local icon_x = center_x - math.floor(icon_size / 2)
     local icon_y = center_y - math.floor(icon_size / 2)
     star:paintTo(bb, icon_x, icon_y)
+    star:free()
 end
 
 -- ===========================================================================
@@ -1018,18 +1023,8 @@ local function updateFolderCover(self_widget, c)
 
     local cover_file = findFolderCoverFile(dir_path)
     if cover_file then
-        local success, w, h =
-            pcall(
-            function()
-                local tmp_img = ImageWidget:new {file = cover_file, scale_factor = 1}
-                tmp_img:_render()
-                local ow, oh = tmp_img:getOriginalWidth(), tmp_img:getOriginalHeight()
-                tmp_img:free()
-                return ow, oh
-            end
-        )
+        local success = pcall(setFolderCover, self_widget, {file = cover_file}, c)
         if success then
-            setFolderCover(self_widget, {file = cover_file, w = w, h = h}, c)
             return
         end
     end
@@ -1091,13 +1086,8 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     BR:paintTo(bb, image_x + image_size.w - brw, image_y + image_size.h - brh)
 end
 
--- Caches FileChooser:getListItem results, keyed by its arguments. Folder
--- covers call self.menu:genItemTableFromPath() during paint/update, which
--- is expensive without this - matches the source patch's cache exactly,
--- including its one known limitation: entries are never invalidated for
--- the lifetime of the FileChooser instance (a read-status or collection
--- change won't refresh a cached row until you leave and re-enter the
--- folder). Kept as-is for fidelity; worth revisiting later.
+-- Folder covers repeatedly generate item tables. Keep a small per-chooser
+-- cache so long browsing sessions cannot retain every directory ever seen.
 local function installFileChooserCache()
     if FileChooser._vos_getlistitem_patched then
         return
@@ -1105,31 +1095,41 @@ local function installFileChooserCache()
     FileChooser._vos_getlistitem_patched = true
 
     local orig_getListItem = FileChooser.getListItem
-    local cached_list = {}
-
-    local function toKey(...)
-        local keys = {}
-        for _, key in pairs({...}) do
-            if type(key) == "table" then
-                table.insert(keys, "table")
-                for k, v in pairs(key) do
-                    table.insert(keys, tostring(k))
-                    table.insert(keys, tostring(v))
-                end
-            else
-                table.insert(keys, tostring(key))
-            end
-        end
-        return table.concat(keys, "")
-    end
+    local orig_clearSortingCache = FileChooser.clearSortingCache
+    local max_cache_entries = 512
 
     function FileChooser:getListItem(dirpath, f, fullpath, attributes, collate)
         if not masterEnabled() then
             return orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
         end
-        local key = toKey(dirpath, f, fullpath, attributes, collate, self.show_filter.status)
-        cached_list[key] = cached_list[key] or orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
-        return cached_list[key]
+        local cache = self._vos_list_item_cache
+        if not cache then
+            cache = {count = 0}
+            self._vos_list_item_cache = cache
+        end
+        local key = table.concat({
+            tostring(dirpath), tostring(f), tostring(fullpath),
+            tostring(attributes and attributes.mode), tostring(attributes and attributes.size),
+            tostring(attributes and attributes.modification),
+            tostring(collate), tostring(self.show_filter and self.show_filter.status),
+        }, "\31")
+        local item = cache[key]
+        if item then
+            return item
+        end
+        if cache.count >= max_cache_entries then
+            cache = {count = 0}
+            self._vos_list_item_cache = cache
+        end
+        item = orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
+        cache[key] = item
+        cache.count = cache.count + 1
+        return item
+    end
+
+    function FileChooser:clearSortingCache(...)
+        self._vos_list_item_cache = nil
+        return orig_clearSortingCache(self, ...)
     end
 
     logger.info("VisualOverhaul: FileChooser.getListItem cache installed")
@@ -1662,15 +1662,12 @@ function CoverBrowserModule:reinit()
         vosSetPaginationHidden(fm, hidePaginationEnabled())
         if fm.file_chooser then
             vosSetPaginationHidden(fm.file_chooser, hidePaginationEnabled())
-            fm.file_chooser:updateItems()
+            fm.file_chooser._vos_list_item_cache = nil
         end
     end
     for _, widget in ipairs(UIManager._window_stack) do
         if widget._vos_pagination_ready then
             vosSetPaginationHidden(widget, hidePaginationEnabled())
-        end
-        if widget.updateItems then
-            widget:updateItems()
         end
     end
 end

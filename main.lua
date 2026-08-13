@@ -30,6 +30,7 @@ local VisualOverhaul =
 }
 
 function VisualOverhaul:init()
+    local heap_before = collectgarbage("count")
     logger.info("Visual Overhaul Suite plugin loaded v1.0.0")
 
     -- Load settings
@@ -79,6 +80,9 @@ function VisualOverhaul:init()
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
     end
+    self.lua_heap_delta_kb = collectgarbage("count") - heap_before
+    logger.info("VisualOverhaul: initialization Lua heap delta (KiB)",
+        math.floor(self.lua_heap_delta_kb + 0.5))
 end
 
 function VisualOverhaul:addToMainMenu(menu_items)
@@ -133,31 +137,24 @@ function VisualOverhaul:refresh()
         self.coverbrowser:reinit()
     end
 
-    -- Force a complete UI refresh
+    -- Rebuild each visible list at most once. Avoid free/init and overlapping
+    -- full-screen refreshes: these are expensive on e-ink devices.
     local fm = FileManager.instance
     if fm then
-        -- Refresh file chooser
+        local updated = {}
         if fm.file_chooser then
             fm.file_chooser:updateItems()
-            -- Force redraw
-            fm.file_chooser:free()
-            fm.file_chooser:init()
+            updated[fm.file_chooser] = true
         end
-
-        -- Force dirty the whole window
-        UIManager:setDirty(fm, "full")
-
-        -- Also refresh any open menus
+        UIManager:setDirty(fm, "ui")
         for _, widget in ipairs(UIManager._window_stack) do
-            if widget.updateItems then
+            if widget.updateItems and not updated[widget] then
                 widget:updateItems()
+                updated[widget] = true
             end
-            UIManager:setDirty(widget, "full")
+            UIManager:setDirty(widget, "ui")
         end
     end
-
-    -- Force a full screen redraw
-    UIManager:setDirty(nil, "full")
 end
 
 return VisualOverhaul
