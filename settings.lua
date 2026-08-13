@@ -198,6 +198,7 @@ function SettingsManager:load()
     local ok, saved = pcall(dofile, self.settings_file)
     if ok and type(saved) == "table" then
         local had_quick_settings = saved.extras and saved.extras.quick_settings
+        local had_filemanager_titlebar = saved.extras and saved.extras.filemanager_titlebar
         local pages_badge = saved.coverbrowser and saved.coverbrowser.pages_badge
         if pages_badge and pages_badge.move_from_border ~= nil then
             pages_badge.x_offset = pages_badge.x_offset or pages_badge.move_from_border
@@ -217,6 +218,13 @@ function SettingsManager:load()
                 saved.extras.quick_settings = legacy
             end
         end
+        if not had_filemanager_titlebar then
+            local legacy = G_reader_settings:readSetting("filemanager_title_bar")
+            if type(legacy) == "table" then
+                deepFill(legacy, saved.extras.filemanager_titlebar)
+                saved.extras.filemanager_titlebar = legacy
+            end
+        end
         self.settings = saved
     else
         self:loadDefaults()
@@ -224,6 +232,11 @@ function SettingsManager:load()
         if type(legacy) == "table" then
             deepFill(legacy, self.settings.extras.quick_settings)
             self.settings.extras.quick_settings = legacy
+        end
+        legacy = G_reader_settings:readSetting("filemanager_title_bar")
+        if type(legacy) == "table" then
+            deepFill(legacy, self.settings.extras.filemanager_titlebar)
+            self.settings.extras.filemanager_titlebar = legacy
         end
     end
     logger.info("VisualOverhaul: Settings loaded")
@@ -375,6 +388,35 @@ function SettingsManager:loadDefaults()
                 show_frontlight = true,
                 show_warmth = true,
                 open_on_start = false
+            },
+            filemanager_titlebar = {
+                enabled = true,
+                show = {
+                    wifi = true,
+                    memory = false,
+                    storage = false,
+                    custom_text = false,
+                    clock = true,
+                    battery = true,
+                    frontlight = false,
+                    frontlight_warmth = false,
+                    up_time = false,
+                    awake_time = false,
+                    suspend_time = false
+                },
+                order = {
+                    "wifi", "memory", "storage", "custom_text", "clock", "battery",
+                    "frontlight", "frontlight_warmth", "up_time", "awake_time", "suspend_time"
+                },
+                custom_text = "KOReader",
+                separator = "dot",
+                separator_space = 1,
+                separator_custom = "*",
+                show_path = true,
+                auto_refresh_clock = true,
+                wifi_show_disabled = false,
+                frontlight_show_off = true,
+                bold = false
             }
         },
         -- CoverBrowser (vos.lua) cover enhancements + badges settings

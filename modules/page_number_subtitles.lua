@@ -32,6 +32,11 @@ function PageNumberSubtitles:updateFileManagerSubtitle(manager, path)
     if not (manager and manager.title_bar and manager.file_chooser) then
         return
     end
+    local titlebar_cfg = self.settings.settings.extras.filemanager_titlebar
+    if titlebar_cfg and titlebar_cfg.enabled and not titlebar_cfg.show_path then
+        manager.title_bar:setSubTitle("")
+        return
+    end
     path = manager.file_chooser.path or path or filemanagerutil.getDefaultDir()
     local cfg = self:cfg()
     if not cfg.filemanager then
