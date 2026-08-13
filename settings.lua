@@ -371,6 +371,9 @@ function SettingsManager:loadDefaults()
                 font_size = 0.95,
                 border_thickness = 2,
                 border_corner_radius = 12,
+                text_color = "#FFFFFF",
+                border_color = "#888888",
+                background_color = "#333333",
                 x_offset = 8,
                 y_offset = 8
             },
@@ -717,7 +720,15 @@ function SettingsManager:getBadgesMenu(plugin)
                 numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
                 numberItem(self, cb.pages_badge, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
                 numberItem(self, cb.pages_badge, "x_offset", "Horizontal offset", plugin, {min = -300, max = 300}),
-                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, {min = -300, max = 300})
+                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, {min = -300, max = 300}),
+                {
+                    text = _("Colors"),
+                    sub_item_table = {
+                        colorItem(self, cb.pages_badge, "text_color", "Text color", plugin),
+                        colorItem(self, cb.pages_badge, "background_color", "Background color", plugin),
+                        colorItem(self, cb.pages_badge, "border_color", "Border color", plugin)
+                    }
+                }
             }
         },
 		{

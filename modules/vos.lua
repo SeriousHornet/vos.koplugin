@@ -101,6 +101,52 @@ local function paintRoundedRectRGB32(bb, x, y, w, h, color_rgb, radius)
     tmp_bb:free()
 end
 
+local function paintRoundedBadgeRGB32(bb, x, y, w, h, border_w, border_rgb, background_rgb, radius)
+    if border_w > 0 then
+        paintRoundedRectRGB32(bb, x, y, w, h, border_rgb, radius)
+    end
+    local inset = math.max(0, border_w)
+    local fill_w = math.max(1, w - 2 * inset)
+    local fill_h = math.max(1, h - 2 * inset)
+    local fill_radius = math.max(0, radius - inset)
+    fill_radius = math.min(fill_radius, math.floor(math.min(fill_w, fill_h) / 2))
+    paintRoundedRectRGB32(
+        bb, x + inset, y + inset, fill_w, fill_h,
+        background_rgb, fill_radius
+    )
+end
+
+local function paintCircleRGB32(bb, center_x, center_y, radius, color_rgb)
+    local size = 2 * radius + 1
+    local tmp_bb = Blitbuffer.new(size, size)
+    tmp_bb:paintCircle(radius, radius, radius, Blitbuffer.COLOR_WHITE)
+    bb:colorblitFromRGB32(
+        tmp_bb, center_x - radius, center_y - radius, 0, 0, size, size,
+        Blitbuffer.ColorRGB32(color_rgb[1], color_rgb[2], color_rgb[3], 0xFF)
+    )
+    tmp_bb:free()
+end
+
+local ColorTextWidget = TextWidget:extend {_vos_rgb = nil}
+
+function ColorTextWidget:paintTo(bb, x, y)
+    if not self._vos_rgb or not Screen:isColorScreen() then
+        TextWidget.paintTo(self, bb, x, y)
+        return
+    end
+    local size = self:getSize()
+    local tmp_bb = Blitbuffer.new(size.w, size.h)
+    local original_color = self.fgcolor
+    self.fgcolor = Blitbuffer.COLOR_WHITE
+    TextWidget.paintTo(self, tmp_bb, 0, 0)
+    self.fgcolor = original_color
+    bb:colorblitFromRGB32(
+        tmp_bb, x, y, 0, 0, size.w, size.h,
+        Blitbuffer.ColorRGB32(self._vos_rgb[1], self._vos_rgb[2], self._vos_rgb[3], 0xFF)
+    )
+    tmp_bb:free()
+end
+
 -- ===========================================================================
 -- Default settings + deep-fill (so this module works even if settings.lua
 -- hasn't been updated with a matching "coverbrowser" defaults block yet)
@@ -149,7 +195,18 @@ local DEFAULTS = {
 
     percent_badge = {enabled = true, position = "top_right", text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
 
-    pages_badge = {enabled = false, position = "bottom_left", font_size = 0.95, border_thickness = 2, border_corner_radius = 12, x_offset = 8, y_offset = 8},
+    pages_badge = {
+        enabled = false,
+        position = "bottom_left",
+        font_size = 0.95,
+        border_thickness = 2,
+        border_corner_radius = 12,
+        text_color = "#FFFFFF",
+        border_color = "#888888",
+        background_color = "#333333",
+        x_offset = 8,
+        y_offset = 8
+    },
 
     status_icons = {enabled = true},
 
@@ -255,26 +312,29 @@ local function initSeriesBadge(self_widget, c)
         local scfg = c.series_indicator
         self_widget.series_index = bookinfo.series_index
 
+        local border = scfg.border_thickness
         local series_text =
-            TextWidget:new {
+            ColorTextWidget:new {
             text = "#" .. self_widget.series_index,
             face = Font:getFace("cfont", scfg.font_size),
             bold = true,
-            fgcolor = colorFromHex(scfg.text_color)
+            fgcolor = colorFromHex(scfg.text_color),
+            _vos_rgb = rgbFromHex(scfg.text_color)
         }
 
         self_widget.series_badge =
             FrameContainer:new {
             linesize = Screen:scaleBySize(2),
-            radius = Screen:scaleBySize(scfg.border_corner_radius),
-            color = colorFromHex(scfg.border_color),
-            bordersize = scfg.border_thickness,
-            padding = Screen:scaleBySize(2),
+            bordersize = 0,
+            padding = Screen:scaleBySize(2) + border,
             margin = 0,
             series_text
         }
 
         self_widget._series_text = series_text
+        self_widget._series_badge_border = border
+        self_widget._series_badge_radius = Screen:scaleBySize(scfg.border_corner_radius)
+        self_widget._series_badge_border_rgb = rgbFromHex(scfg.border_color)
         self_widget._series_badge_background_rgb = rgbFromHex(scfg.background_color)
         self_widget.has_series_badge = true
     end
@@ -295,19 +355,12 @@ local function paintSeriesBadge(self_widget, bb, x, y)
     local badge_x = math.floor(target.dimen.x + ix + (d_w - badge_size.w) / 2)
     local badge_y = math.floor(target.dimen.y + iy + (d_h - badge_size.h) / 2)
 
-    local border = self_widget.series_badge.bordersize or 0
-    local fill_w = math.max(1, badge_size.w - 2 * border)
-    local fill_h = math.max(1, badge_size.h - 2 * border)
-    local fill_radius = math.max(0, (self_widget.series_badge.radius or 0) - border)
-    fill_radius = math.min(fill_radius, math.floor(math.min(fill_w, fill_h) / 2))
-    paintRoundedRectRGB32(
-        bb,
-        badge_x + border,
-        badge_y + border,
-        fill_w,
-        fill_h,
+    paintRoundedBadgeRGB32(
+        bb, badge_x, badge_y, badge_size.w, badge_size.h,
+        self_widget._series_badge_border,
+        self_widget._series_badge_border_rgb,
         self_widget._series_badge_background_rgb,
-        fill_radius
+        self_widget._series_badge_radius
     )
 
     self_widget.series_badge:paintTo(bb, badge_x, badge_y)
@@ -417,12 +470,15 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
         local fill_rgb = (self_widget.status == "abandoned") and pcfg.abandoned_color_rgb or pcfg.fill_color_rgb
         paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     else
-        local BORDER_COLOR = colorFromHex(pcfg.border_color)
-        local TRACK_COLOR = colorFromHex(pcfg.track_color)
-        bb:paintRoundedRect(bar_x - BORDER_W, bar_y - BORDER_W, bar_w + 2 * BORDER_W, BAR_H + 2 * BORDER_W, BORDER_COLOR, BAR_RADIUS + BORDER_W)
-        bb:paintRoundedRect(bar_x, bar_y, bar_w, BAR_H, TRACK_COLOR, BAR_RADIUS)
-        local fill_color = (self_widget.status == "abandoned") and colorFromHex(pcfg.abandoned_color) or colorFromHex(pcfg.fill_color)
-        bb:paintRoundedRect(bar_x, bar_y, fill_w, BAR_H, fill_color, BAR_RADIUS)
+        paintRoundedBadgeRGB32(
+            bb, bar_x - BORDER_W, bar_y - BORDER_W,
+            bar_w + 2 * BORDER_W, BAR_H + 2 * BORDER_W,
+            BORDER_W, rgbFromHex(pcfg.border_color), rgbFromHex(pcfg.track_color),
+            BAR_RADIUS + BORDER_W
+        )
+        local fill_rgb = (self_widget.status == "abandoned")
+            and rgbFromHex(pcfg.abandoned_color) or rgbFromHex(pcfg.fill_color)
+        paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     end
 end
 
@@ -531,12 +587,14 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     local page_text = page_count .. " p."
     local font_size = math.floor(corner_mark_size * pcfg.font_size)
 
+    local border = pcfg.border_thickness
     local pages_text =
-        TextWidget:new {
+        ColorTextWidget:new {
         text = page_text,
         face = Font:getFace("cfont", font_size),
         alignment = "left",
-        fgcolor = Blitbuffer.COLOR_WHITE,
+        fgcolor = colorFromHex(pcfg.text_color),
+        _vos_rgb = rgbFromHex(pcfg.text_color),
         bold = true,
         padding = 2
     }
@@ -544,11 +602,8 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     local pages_badge_frame =
         FrameContainer:new {
         linesize = Screen:scaleBySize(2),
-        radius = Screen:scaleBySize(pcfg.border_corner_radius),
-        color = Blitbuffer.COLOR_DARK_GRAY,
-        bordersize = pcfg.border_thickness,
-        background = Blitbuffer.COLOR_GRAY_3,
-        padding = Screen:scaleBySize(2),
+        bordersize = 0,
+        padding = Screen:scaleBySize(2) + border,
         margin = 0,
         pages_text
     }
@@ -565,8 +620,16 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
         pcfg.position, cover_left, cover_top, cover_w, cover_h,
         badge_w, badge_h, x_offset, y_offset
     )
+    pos_x, pos_y = math.floor(pos_x), math.floor(pos_y)
 
-    pages_badge_frame:paintTo(bb, math.floor(pos_x), math.floor(pos_y))
+    paintRoundedBadgeRGB32(
+        bb, pos_x, pos_y, badge_w, badge_h, border,
+        rgbFromHex(pcfg.border_color),
+        rgbFromHex(pcfg.background_color),
+        Screen:scaleBySize(pcfg.border_corner_radius)
+    )
+
+    pages_badge_frame:paintTo(bb, pos_x, pos_y)
 end
 
 -- ===========================================================================
@@ -690,8 +753,7 @@ local function paintCollectionStar(bb, x, y, self_widget)
     end
 
     if settings.use_background_circle then
-        local bg_color = Blitbuffer.colorFromString(settings.background_color)
-        bb:paintCircle(center_x, center_y, radius, bg_color)
+        paintCircleRGB32(bb, center_x, center_y, radius, rgbFromHex(settings.background_color))
     end
 
     local star =
@@ -1505,6 +1567,9 @@ local function patchMosaicMenuItem()
                 self.series_badge = nil
             end
             self._series_badge_background_rgb = nil
+            self._series_badge_border_rgb = nil
+            self._series_badge_border = nil
+            self._series_badge_radius = nil
             self.series_index = nil
             self.has_series_badge = nil
         end
