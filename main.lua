@@ -1,15 +1,14 @@
 --[[--
 Visual Overhaul Suite - Complete visual customization for KOReader
 @module koplugin.visualoverhaul
---]] --
+--]]
+--
 
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
-local FileManager = require("apps/filemanager/filemanager") -- ADD THIS
+local FileManager = require("apps/filemanager/filemanager")
 local UIManager = require("ui/uimanager")
-local logger = require("logger")
 local _ = require("gettext")
 
--- Modules
 local SettingsManager = require("settings")
 local NavbarModule = require("modules/navbar")
 local CoverBrowserModule = require("modules/vos")
@@ -23,95 +22,78 @@ local PageNumberSubtitles = require("modules/page_number_subtitles")
 local QuickSettingsModule = require("modules/quick_settings")
 local FileManagerTitleBar = require("modules/titlebar")
 
--- Main Plugin Class
-local VisualOverhaul =
-    WidgetContainer:extend {
+local VisualOverhaul = WidgetContainer:extend {
     name = "visualoverhaul",
-    is_doc_only = false
+    is_doc_only = false,
 }
 
 function VisualOverhaul:init()
     local heap_before = collectgarbage("count")
-    logger.info("Visual Overhaul Suite plugin loaded v1.0.0")
-
-    -- Load settings
     self.settings = SettingsManager:new()
     self.settings:load()
 
     self.extra_modules = {
-        UIFontModule:new {plugin = self, settings = self.settings},
-        BrowserHideUnderline:new {plugin = self, settings = self.settings},
-        BrowserUpFolder:new {plugin = self, settings = self.settings},
-        MenuSizeModule:new {plugin = self, settings = self.settings},
-        IncognitoModule:new {plugin = self, settings = self.settings},
-        MenuTextOverrides:new {plugin = self, settings = self.settings},
-        PageNumberSubtitles:new {plugin = self, settings = self.settings},
-        QuickSettingsModule:new {plugin = self, settings = self.settings},
-        FileManagerTitleBar:new {plugin = self, settings = self.settings},
+        UIFontModule:new { plugin = self, settings = self.settings },
+        BrowserHideUnderline:new { plugin = self, settings = self.settings },
+        BrowserUpFolder:new { plugin = self, settings = self.settings },
+        MenuSizeModule:new { plugin = self, settings = self.settings },
+        IncognitoModule:new { plugin = self, settings = self.settings },
+        MenuTextOverrides:new { plugin = self, settings = self.settings },
+        PageNumberSubtitles:new { plugin = self, settings = self.settings },
+        QuickSettingsModule:new { plugin = self, settings = self.settings },
+        FileManagerTitleBar:new { plugin = self, settings = self.settings },
     }
     for _, module in ipairs(self.extra_modules) do
-        logger.info("VisualOverhaul: Initializing Extras module", module.name)
         module:init()
     end
 
-    -- Initialize modules based on settings
     if self.settings:isEnabled("navbar") then
-        logger.info("VisualOverhaul: Initializing Navbar module")
-        self.navbar =
-            NavbarModule:new {
+        self.navbar = NavbarModule:new {
             plugin = self,
-            settings = self.settings
+            settings = self.settings,
         }
         self.navbar:init()
     end
 
     if
-        self.settings:isEnabled("coverbrowser") or self.settings:isEnabled("hide_pagination") or
-            self.settings:isEnabled("collection_star") or self.settings:isEnabled("hide_collection_star")
-     then
-        logger.info("VisualOverhaul: Initializing CoverBrowser module")
-        self.coverbrowser =
-            CoverBrowserModule:new {
+        self.settings:isEnabled("coverbrowser")
+        or self.settings:isEnabled("hide_pagination")
+        or self.settings:isEnabled("collection_star")
+        or self.settings:isEnabled("hide_collection_star")
+    then
+        self.coverbrowser = CoverBrowserModule:new {
             plugin = self,
-            settings = self.settings
+            settings = self.settings,
         }
         self.coverbrowser:init()
     end
 
-    -- Register with menu
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
     end
     self.lua_heap_delta_kb = collectgarbage("count") - heap_before
-    logger.info("VisualOverhaul: initialization Lua heap delta (KiB)",
-        math.floor(self.lua_heap_delta_kb + 0.5))
 end
 
 function VisualOverhaul:addToMainMenu(menu_items)
     menu_items.visual_overhaul = {
         text = _("Visual Overhaul Suite (VOS)"),
         sorting_hint = "tools",
-        sub_item_table = self.settings:getMainMenu(self)
+        sub_item_table = self.settings:getMainMenu(self),
     }
 end
 
 function VisualOverhaul:refresh()
-    logger.info("VisualOverhaul: Refreshing...")
-
     for _, module in ipairs(self.extra_modules or {}) do
         if module.reinit then
             module:reinit()
         end
     end
 
-    -- Reinitialize modules
     if self.settings:isEnabled("navbar") then
         if not self.navbar then
-            logger.info("VisualOverhaul: Initializing Navbar module")
-            self.navbar =
-                NavbarModule:new {
+            self.navbar = NavbarModule:new {
                 plugin = self,
-                settings = self.settings
+                settings = self.settings,
             }
             self.navbar:init()
         else
@@ -122,17 +104,16 @@ function VisualOverhaul:refresh()
     end
 
     if
-        self.coverbrowser or self.settings:isEnabled("coverbrowser") or
-            self.settings:isEnabled("hide_pagination") or self.settings:isEnabled("collection_star") or
-            self.settings:isEnabled("hide_collection_star")
-     then
+        self.coverbrowser
+        or self.settings:isEnabled("coverbrowser")
+        or self.settings:isEnabled("hide_pagination")
+        or self.settings:isEnabled("collection_star")
+        or self.settings:isEnabled("hide_collection_star")
+    then
         if not self.coverbrowser then
-            -- A module toggle was switched on at runtime; install the patches now.
-            logger.info("VisualOverhaul: Initializing CoverBrowser module")
-            self.coverbrowser =
-                CoverBrowserModule:new {
+            self.coverbrowser = CoverBrowserModule:new {
                 plugin = self,
-                settings = self.settings
+                settings = self.settings,
             }
             self.coverbrowser:init()
         end

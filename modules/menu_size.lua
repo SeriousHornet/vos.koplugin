@@ -37,7 +37,7 @@ end
 
 function MenuSizeModule:getMenuItem()
     return {
-        text = _("Automatic menu sizing for DPI"),
+        text = _("Auto Menu Sizing"),
         checked_func = function()
             return self:isEnabled()
         end,
@@ -47,9 +47,6 @@ function MenuSizeModule:getMenuItem()
             UIManager:askForRestart(_("Restart to apply the menu size change"))
         end,
     }
-end
-
-function MenuSizeModule:reinit()
 end
 
 return MenuSizeModule

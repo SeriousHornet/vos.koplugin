@@ -50,7 +50,7 @@ function UIFontModule:init()
         local bold = getBoldPath(regular)
         if regular and bold and paths[regular] and paths[bold] then
             table.insert(self.font_list, name)
-            self.fonts[name] = {regular = regular, bold = bold}
+            self.fonts[name] = { regular = regular, bold = bold }
         end
     end
     table.sort(self.font_list)
@@ -123,7 +123,7 @@ function UIFontModule:getMenuItem()
         end,
         sub_item_table_func = function()
             local items = {}
-            for index, font_name in ipairs(self.font_list) do
+            for _, font_name in ipairs(self.font_list) do
                 local name = font_name
                 table.insert(items, {
                     text = name,
@@ -144,9 +144,6 @@ function UIFontModule:getMenuItem()
             return items
         end,
     }
-end
-
-function UIFontModule:reinit()
 end
 
 return UIFontModule

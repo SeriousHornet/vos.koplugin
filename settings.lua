@@ -1,8 +1,3 @@
---[[--
-Settings Manager for Visual Overhaul Suite
-Handles loading, saving, and UI for all plugin settings
---]] --
-
 local DataStorage = require("datastorage")
 local UIManager = require("ui/uimanager")
 local InputDialog = require("ui/widget/inputdialog")
@@ -10,15 +5,45 @@ local PathChooser = require("ui/widget/pathchooser")
 local SortWidget = require("ui/widget/sortwidget")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
-local logger = require("logger")
 local Screen = require("device").screen
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local SettingsManager = {
-    settings_file = nil,
-    settings = nil
-}
+local SettingsManager = {}
+
+local function groupMenuItems(items)
+    local nested, actions, checkboxes = {}, {}, {}
+    for __, item in ipairs(items) do
+        if item.sub_item_table or item.sub_item_table_func then
+            table.insert(nested, item)
+        elseif item.checked_func then
+            table.insert(checkboxes, item)
+        else
+            table.insert(actions, item)
+        end
+    end
+    for __, item in ipairs(actions) do
+        table.insert(nested, item)
+    end
+    for __, item in ipairs(checkboxes) do
+        table.insert(nested, item)
+    end
+    return nested
+end
+
+local function groupFeatureMenuItems(items)
+    local master_toggle = table.remove(items, 1)
+    local grouped = groupMenuItems(items)
+    table.insert(grouped, 1, master_toggle)
+    return grouped
+end
+
+local function groupFeatureMenuItemsWithTrailingAction(items)
+    local trailing_action = table.remove(items)
+    local grouped = groupFeatureMenuItems(items)
+    table.insert(grouped, trailing_action)
+    return grouped
+end
 
 -- Backfill any keys missing from the saved settings. New defaults are added
 -- here so older settings files keep working after an upgrade.
@@ -35,8 +60,6 @@ local function deepFill(dst, defaults)
     end
 end
 
--- Generic menu-item builders ------------------------------------------------
-
 local function checkboxItem(self, tree, key, text, plugin, enabled_func)
     return {
         text = _(text),
@@ -45,41 +68,38 @@ local function checkboxItem(self, tree, key, text, plugin, enabled_func)
         end,
         enabled_func = enabled_func,
         callback = function()
-            tree[key] = not (tree[key] == true)
+            tree[key] = tree[key] ~= true
             self:save()
             if plugin then
                 plugin:refresh()
             end
-        end
+        end,
     }
 end
 
 local function choiceItem(self, tree, key, text, choices, plugin, enabled_func)
     local items = {}
-    for index, choice in ipairs(choices) do
+    for __, choice in ipairs(choices) do
         local value = choice.value
         local label = choice.label
-        table.insert(
-            items,
-            {
-                text = _(label),
-                checked_func = function()
-                    return tree[key] == value
-                end,
-                callback = function()
-                    tree[key] = value
-                    self:save()
-                    if plugin then
-                        plugin:refresh()
-                    end
+        table.insert(items, {
+            text = _(label),
+            checked_func = function()
+                return tree[key] == value
+            end,
+            callback = function()
+                tree[key] = value
+                self:save()
+                if plugin then
+                    plugin:refresh()
                 end
-            }
-        )
+            end,
+        })
     end
     return {
         text = _(text),
         enabled_func = enabled_func,
-        sub_item_table = items
+        sub_item_table = items,
     }
 end
 
@@ -93,16 +113,18 @@ local function numberItem(self, tree, key, text, plugin, opts)
         enabled_func = opts.enabled_func,
         callback = function(touchmenu)
             local dlg
-            dlg =
-                InputDialog:new {
+            dlg = InputDialog:new {
                 title = _(text),
                 input = tostring(tree[key]),
                 hint = opts.hint or _("Enter a number"),
                 buttons = {
                     {
-                        {text = _("Cancel"), callback = function()
+                        {
+                            text = _("Cancel"),
+                            callback = function()
                                 UIManager:close(dlg)
-                            end},
+                            end,
+                        },
                         {
                             text = _("Set"),
                             is_enter_default = true,
@@ -119,14 +141,14 @@ local function numberItem(self, tree, key, text, plugin, opts)
                                         plugin:refresh()
                                     end
                                 end
-                            end
-                        }
-                    }
-                }
+                            end,
+                        },
+                    },
+                },
             }
             UIManager:show(dlg)
             dlg:onShowKeyboard()
-        end
+        end,
     }
 end
 
@@ -138,28 +160,32 @@ local function colorItem(self, tree, key, text, plugin, opts)
         enabled_func = opts.enabled_func,
         callback = function(touchmenu)
             local dlg
-            dlg =
-                InputDialog:new {
+            dlg = InputDialog:new {
                 title = _(text),
                 input = tree[key] or "#000000",
                 hint = _("Color as #RRGGBB, e.g. #4CAF50"),
                 buttons = {
                     {
-                        {text = _("Cancel"), callback = function()
+                        {
+                            text = _("Cancel"),
+                            callback = function()
                                 UIManager:close(dlg)
-                            end},
+                            end,
+                        },
                         {
                             text = _("Set"),
                             is_enter_default = true,
                             callback = function()
                                 local val = dlg:getInputText():gsub("%s+", "")
-                                if val:match("^#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]$") then
+                                if
+                                    val:match("^#[0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F][0-9a-fA-F]$")
+                                then
                                     tree[key] = val
                                     if opts.rgb_key then
                                         tree[opts.rgb_key] = {
                                             tonumber(val:sub(2, 3), 16),
                                             tonumber(val:sub(4, 5), 16),
-                                            tonumber(val:sub(6, 7), 16)
+                                            tonumber(val:sub(6, 7), 16),
                                         }
                                     end
                                     self:save()
@@ -171,14 +197,14 @@ local function colorItem(self, tree, key, text, plugin, opts)
                                         plugin:refresh()
                                     end
                                 end
-                            end
-                        }
-                    }
-                }
+                            end,
+                        },
+                    },
+                },
             }
             UIManager:show(dlg)
             dlg:onShowKeyboard()
-        end
+        end,
     }
 end
 
@@ -205,11 +231,9 @@ function SettingsManager:load()
             pages_badge.y_offset = pages_badge.y_offset or pages_badge.move_from_border
         end
         local folder_covers = saved.coverbrowser and saved.coverbrowser.folder_covers
-        if folder_covers and folder_covers.folder_name_position == nil
-                and folder_covers.name_centered ~= nil then
+        if folder_covers and folder_covers.folder_name_position == nil and folder_covers.name_centered ~= nil then
             folder_covers.folder_name_position = folder_covers.name_centered and "center" or "top"
         end
-        -- Backfill any keys introduced since this settings file was saved.
         deepFill(saved, self:loadDefaults())
         if not had_quick_settings then
             local legacy = G_reader_settings:readSetting("quick_settings_panel")
@@ -239,27 +263,17 @@ function SettingsManager:load()
             self.settings.extras.filemanager_titlebar = legacy
         end
     end
-    logger.info("VisualOverhaul: Settings loaded")
 end
 
 function SettingsManager:loadDefaults()
     self.settings = {
-        -- Module toggles
         enabled_modules = {
             navbar = true,
             coverbrowser = true,
-            progress_bar = false,
-            pages_badge = false,
-            percent_badge = false,
-            series_badge = false,
-            status_icons = false,
             collection_star = false,
-            faded_finished = false,
-            rounded_corners = false,
             hide_pagination = false,
-            hide_collection_star = true
+            hide_collection_star = true,
         },
-        -- Navbar settings
         navbar = {
             size = "medium",
             show_labels = true,
@@ -295,7 +309,7 @@ function SettingsManager:loadDefaults()
                 page_right = false,
                 sleep = false,
                 restart = false,
-                stats = false
+                stats = false,
             },
             tab_order = {
                 "page_left",
@@ -314,34 +328,18 @@ function SettingsManager:loadDefaults()
                 "page_right",
                 "sleep",
                 "restart",
-                "stats"
+                "stats",
             },
-            custom_tabs = {}
+            custom_tabs = {},
         },
-        -- Progress bar settings
-        progress_bar = {
-            enabled = false,
-            height = 9,
-            radius = 3,
-            inset_x = 6,
-            inset_y = 12,
-            gap_to_icon = 0,
-            border_width = 0.5,
-            track_color = "#F4F0EC",
-            reading_color = "#4CAF50",
-            abandoned_color = "#F44336",
-            border_color = "#000000"
-        },
-        -- Collection-star overlay settings
         collection_star = {
             size = 20,
             x_offset = 6,
             y_offset = 6,
             position = "top_left",
             use_background_circle = true,
-            background_color = "#000000"
+            background_color = "#000000",
         },
-        -- Optional community-patch integrations
         extras = {
             ui_font_name = "Noto Sans",
             hide_last_visited_underline = true,
@@ -351,21 +349,34 @@ function SettingsManager:loadDefaults()
             incognito_enabled = true,
             menu_text = {
                 replace_underscores = true,
-                restore_articles = true
+                restore_articles = true,
             },
             page_subtitles = {
                 filemanager = true,
                 use_shortcut_names = true,
                 pathchooser = true,
                 history = true,
-                collections = true
+                collections = true,
             },
             quick_settings = {
                 enabled = true,
                 button_order = {
-                    "wifi", "night", "rotate", "usb", "search", "quickrss",
-                    "cloud", "zlibrary", "calibre", "notion", "streak", "opds",
-                    "restart", "exit", "sleep", "screenshot"
+                    "wifi",
+                    "night",
+                    "rotate",
+                    "usb",
+                    "search",
+                    "quickrss",
+                    "cloud",
+                    "zlibrary",
+                    "calibre",
+                    "notion",
+                    "streak",
+                    "opds",
+                    "restart",
+                    "exit",
+                    "sleep",
+                    "screenshot",
                 },
                 show_buttons = {
                     wifi = true,
@@ -383,11 +394,11 @@ function SettingsManager:loadDefaults()
                     restart = true,
                     exit = true,
                     sleep = true,
-                    screenshot = true
+                    screenshot = true,
                 },
                 show_frontlight = true,
                 show_warmth = true,
-                open_on_start = false
+                open_on_start = false,
             },
             filemanager_titlebar = {
                 enabled = true,
@@ -402,11 +413,20 @@ function SettingsManager:loadDefaults()
                     frontlight_warmth = false,
                     up_time = false,
                     awake_time = false,
-                    suspend_time = false
+                    suspend_time = false,
                 },
                 order = {
-                    "wifi", "memory", "storage", "custom_text", "clock", "battery",
-                    "frontlight", "frontlight_warmth", "up_time", "awake_time", "suspend_time"
+                    "wifi",
+                    "memory",
+                    "storage",
+                    "custom_text",
+                    "clock",
+                    "battery",
+                    "frontlight",
+                    "frontlight_warmth",
+                    "up_time",
+                    "awake_time",
+                    "suspend_time",
                 },
                 custom_text = "KOReader",
                 separator = "dot",
@@ -416,22 +436,21 @@ function SettingsManager:loadDefaults()
                 auto_refresh_clock = true,
                 wifi_show_disabled = false,
                 frontlight_show_off = true,
-                bold = false
-            }
+                bold = false,
+            },
         },
-        -- CoverBrowser (vos.lua) cover enhancements + badges settings
         coverbrowser = {
             rounded_corners = {
-                enabled = true
+                enabled = true,
             },
             cover_aspect_ratio = {
                 ratio_w = 2,
                 ratio_h = 3,
                 stretch_limit = 50,
-                fill = false
+                fill = false,
             },
             stretch_covers = {
-                enabled = true
+                enabled = true,
             },
             series_indicator = {
                 style = "badge", -- "off" | "badge" | "bar"
@@ -440,11 +459,11 @@ function SettingsManager:loadDefaults()
                 border_corner_radius = 9,
                 text_color = "#000000",
                 border_color = "#000000",
-                background_color = "#E7E7E7"
+                background_color = "#E7E7E7",
             },
             faded_finished = {
                 enabled = true,
-                fading_amount = 0.5
+                fading_amount = 0.5,
             },
             progress_bar = {
                 enabled = true,
@@ -461,10 +480,10 @@ function SettingsManager:loadDefaults()
                 track_color = "#F4F0EC",
                 fill_color = "#555555",
                 abandoned_color = "#C0C0C0",
-                fill_color_rgb = {0x4C, 0xAF, 0x50},
-                abandoned_color_rgb = {0xF4, 0x43, 0x36},
+                fill_color_rgb = { 0x4C, 0xAF, 0x50 },
+                abandoned_color_rgb = { 0xF4, 0x43, 0x36 },
                 border_w = 0.5,
-                border_color = "#000000"
+                border_color = "#000000",
             },
             percent_badge = {
                 enabled = true,
@@ -474,7 +493,7 @@ function SettingsManager:loadDefaults()
                 move_on_y = -1,
                 badge_w = 70,
                 badge_h = 40,
-                bump_up = 1
+                bump_up = 1,
             },
             pages_badge = {
                 enabled = false,
@@ -486,23 +505,22 @@ function SettingsManager:loadDefaults()
                 border_color = "#888888",
                 background_color = "#333333",
                 x_offset = 8,
-                y_offset = 8
+                y_offset = 8,
             },
             status_icons = {
-                enabled = true
+                enabled = true,
             },
             disable_description_hint = true,
             folder_covers = {
                 enabled = true,
                 show_folder_name = true,
-                name_centered = true,
                 folder_name_position = "center",
                 file_count_position = "bottom_right",
                 file_count_size = 14,
                 folder_font_size = 20,
-                folder_border = 0.5
-            }
-        }
+                folder_border = 0.5,
+            },
+        },
     }
     return self.settings
 end
@@ -516,7 +534,7 @@ function SettingsManager:save()
             if type(v) == "table" then
                 if #v > 0 then
                     result = result .. indent .. "  " .. key .. " = {\n"
-                    for _, item in ipairs(v) do
+                    for __, item in ipairs(v) do
                         if type(item) == "string" then
                             result = result .. indent .. "    " .. string.format("%q", item) .. ",\n"
                         elseif type(item) == "number" then
@@ -548,7 +566,6 @@ function SettingsManager:save()
     if file then
         file:write(content)
         file:close()
-        logger.info("VisualOverhaul: Settings saved")
     end
 end
 
@@ -561,17 +578,12 @@ function SettingsManager:setEnabled(module, enabled)
     self:save()
 end
 
--- Main menu structure - this gets added to the plugin's sub_item_table
 function SettingsManager:getMainMenu(plugin)
     local self_ref = self
 
-    return {
+    return groupFeatureMenuItems {
         {
-            text = _("Navigation Bar"),
-            sub_item_table = self:getNavbarMenu(plugin)
-        },
-        {
-            text = _("Enable Cover Enhancements & Badges"),
+            text = _("Enable cover enhancements & badges"),
             checked_func = function()
                 return self_ref:isEnabled("coverbrowser")
             end,
@@ -580,64 +592,64 @@ function SettingsManager:getMainMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
-            text = _("Cover Enhancements"),
+            text = _("Navigation bar"),
+            sub_item_table = self:getNavbarMenu(plugin),
+        },
+        {
+            text = _("Cover enhancements"),
             enabled_func = function()
                 return self_ref:isEnabled("coverbrowser")
             end,
-            sub_item_table = self:getCoverEnhancementsMenu(plugin)
+            sub_item_table = self:getCoverEnhancementsMenu(plugin),
         },
         {
             text = _("Badges"),
             enabled_func = function()
                 return self_ref:isEnabled("coverbrowser")
             end,
-            sub_item_table = self:getBadgesMenu(plugin)
+            sub_item_table = self:getBadgesMenu(plugin),
         },
         {
             text = _("Clean up"),
-            sub_item_table = self:getCleanupMenu(plugin)
+            sub_item_table = self:getCleanupMenu(plugin),
         },
         {
             text = _("Extras"),
             sub_item_table_func = function()
                 local items = {}
-                for _, module in ipairs(plugin.extra_modules or {}) do
+                for __, module in ipairs(plugin.extra_modules or {}) do
                     if module.getMenuItem then
                         table.insert(items, module:getMenuItem())
                     end
                 end
-                return items
-            end
+                return groupMenuItems(items)
+            end,
         },
         {
-            text = _("Reset to Defaults"),
+            text = _("Reset to defaults"),
             callback = function(touchmenu_instance)
-                UIManager:show(
-                    ConfirmBox:new {
-                        text = _("Reset all Visual Overhaul settings to defaults?"),
-                        ok_text = _("Reset"),
-                        ok_callback = function()
-                            self_ref:loadDefaults()
-                            self_ref:save()
-                            if touchmenu_instance then
-                                touchmenu_instance:updateItems()
-                            end
-                            UIManager:show(
-                                InfoMessage:new {
-                                    text = _("Settings reset to defaults"),
-                                    timeout = 2
-                                }
-                            )
-                            if plugin then
-                                plugin:refresh()
-                            end
+                UIManager:show(ConfirmBox:new {
+                    text = _("Reset all Visual Overhaul settings to defaults?"),
+                    ok_text = _("Reset"),
+                    ok_callback = function()
+                        self_ref:loadDefaults()
+                        self_ref:save()
+                        if touchmenu_instance then
+                            touchmenu_instance:updateItems()
                         end
-                    }
-                )
-            end
+                        UIManager:show(InfoMessage:new {
+                            text = _("Settings reset to defaults"),
+                            timeout = 2,
+                        })
+                        if plugin then
+                            plugin:refresh()
+                        end
+                    end,
+                })
+            end,
         },
         {
             text = _("Refresh UI"),
@@ -647,13 +659,11 @@ function SettingsManager:getMainMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-                UIManager:show(
-                    InfoMessage:new {
-                        text = _("UI refreshed"),
-                        timeout = 1
-                    }
-                )
-            end
+                UIManager:show(InfoMessage:new {
+                    text = _("UI refreshed"),
+                    timeout = 1,
+                })
+            end,
         },
         {
             text = _("Memory diagnostics"),
@@ -661,7 +671,7 @@ function SettingsManager:getMainMenu(plugin)
                 local rss
                 local statm = io.open("/proc/self/statm", "r")
                 if statm then
-                    local _, resident_pages = statm:read("*number", "*number")
+                    local __, resident_pages = statm:read("*number", "*number")
                     statm:close()
                     if resident_pages then
                         rss = resident_pages * 4096 / 1024 / 1024
@@ -676,33 +686,30 @@ function SettingsManager:getMainMenu(plugin)
                     text = text .. string.format("\nKOReader process RSS: %.1f MiB", rss)
                 end
                 text = text .. "\n\nRSS includes KOReader, documents, caches, and all plugins."
-                UIManager:show(InfoMessage:new{text = text})
-            end
+                UIManager:show(InfoMessage:new { text = text })
+            end,
         },
         {
             text = _("About"),
             callback = function()
-                UIManager:show(
-                    InfoMessage:new {
-                        text = _(
-                            "Visual Overhaul Suite (VOS)\n\n" ..
-                            "A comprehensive visual customization suite for KOReader.\n\n" ..
-                            "Features:\n" ..
-                            "  - Custom navigation bar with flexible tab arrangement\n" ..
-                            "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n" ..
-                            "  - Badges: progress bar, percentage, pages, status icons\n" ..
-                            "  - Clean up: hide pagination and the description hint bar\n\n" ..
-                            "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n" ..
-                            "Use 'Reset to defaults' to restore the factory configuration."
-                        )
-                    }
-                )
-            end
-        }
+                UIManager:show(InfoMessage:new {
+                    text = _(
+                        "Visual Overhaul Suite (VOS)\n\n"
+                            .. "A comprehensive visual customization suite for KOReader.\n\n"
+                            .. "Features:\n"
+                            .. "  - Custom navigation bar with flexible tab arrangement\n"
+                            .. "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n"
+                            .. "  - Badges: progress bar, percentage, pages, status icons\n"
+                            .. "  - Clean up: hide pagination and the description hint bar\n\n"
+                            .. "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n"
+                            .. "Use 'Reset to defaults' to restore the factory configuration."
+                    ),
+                })
+            end,
+        },
     }
 end
 
--- "Clean up" section: UI elements that declutter the file browser.
 function SettingsManager:getCleanupMenu(plugin)
     local self_ref = self
     local cb = self.settings.coverbrowser
@@ -718,13 +725,16 @@ function SettingsManager:getCleanupMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         checkboxItem(self, cb.progress_bar, "hide_native", "Hide default progress bar", plugin),
         checkboxItem(
-            self, self.settings.enabled_modules, "hide_collection_star",
-            "Hide default collection star", plugin
-        )
+            self,
+            self.settings.enabled_modules,
+            "hide_collection_star",
+            "Hide default collection star",
+            plugin
+        ),
     }
 end
 
@@ -734,56 +744,84 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
         {
             text = _("Rounded corners"),
             sub_item_table = {
-                checkboxItem(self, cb.rounded_corners, "enabled", "Enable rounded corners", plugin)
-            }
+                checkboxItem(self, cb.rounded_corners, "enabled", "Enable rounded corners", plugin),
+            },
         },
         {
             text = _("Cover aspect ratio"),
             sub_item_table = {
-                numberItem(self, cb.cover_aspect_ratio, "ratio_w", "Aspect ratio width", plugin, {min = 1, max = 10}),
-                numberItem(self, cb.cover_aspect_ratio, "ratio_h", "Aspect ratio height", plugin, {min = 1, max = 10}),
-                numberItem(self, cb.cover_aspect_ratio, "stretch_limit", "Stretch limit (%)", plugin, {min = 0, max = 100}),
-                checkboxItem(self, cb.cover_aspect_ratio, "fill", "Fill cover", plugin)
-            }
+                numberItem(self, cb.cover_aspect_ratio, "ratio_w", "Aspect ratio width", plugin, { min = 1, max = 10 }),
+                numberItem(
+                    self,
+                    cb.cover_aspect_ratio,
+                    "ratio_h",
+                    "Aspect ratio height",
+                    plugin,
+                    { min = 1, max = 10 }
+                ),
+                numberItem(
+                    self,
+                    cb.cover_aspect_ratio,
+                    "stretch_limit",
+                    "Stretch limit (%)",
+                    plugin,
+                    { min = 0, max = 100 }
+                ),
+                checkboxItem(self, cb.cover_aspect_ratio, "fill", "Fill cover", plugin),
+            },
         },
         {
             text = _("Stretch covers"),
             sub_item_table = {
-                checkboxItem(self, cb.stretch_covers, "enabled", "Enable stretch covers", plugin)
-            }
+                checkboxItem(self, cb.stretch_covers, "enabled", "Enable stretch covers", plugin),
+            },
         },
         {
-            text = _("Fade finished books"),
-            sub_item_table = {
+            text = _("Faded finished books"),
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.faded_finished, "enabled", "Enable faded finished books", plugin),
-                numberItem(self, cb.faded_finished, "fading_amount", "Fading amount", plugin, {min = 0, max = 1})
-            }
+                numberItem(self, cb.faded_finished, "fading_amount", "Fading amount", plugin, { min = 0, max = 1 }),
+            },
         },
         {
             text = _("Folder covers"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.folder_covers, "enabled", "Enable folder covers", plugin),
                 checkboxItem(self, cb.folder_covers, "show_folder_name", "Show folder name", plugin),
                 choiceItem(self, cb.folder_covers, "folder_name_position", "Folder name position", {
-                    {label = "Top", value = "top"},
-                    {label = "Center", value = "center"},
-                    {label = "Bottom", value = "bottom"}
+                    { label = "Top", value = "top" },
+                    { label = "Center", value = "center" },
+                    { label = "Bottom", value = "bottom" },
                 }, plugin),
                 choiceItem(self, cb.folder_covers, "file_count_position", "File count position", {
-                    {label = "Top left", value = "top_left"},
-                    {label = "Top center", value = "top_center"},
-                    {label = "Top right", value = "top_right"},
-                    {label = "Center left", value = "center_left"},
-                    {label = "Center right", value = "center_right"},
-                    {label = "Bottom left", value = "bottom_left"},
-                    {label = "Bottom center", value = "bottom_center"},
-                    {label = "Bottom right", value = "bottom_right"}
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top center", value = "top_center" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Center left", value = "center_left" },
+                    { label = "Center right", value = "center_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom center", value = "bottom_center" },
+                    { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.folder_covers, "file_count_size", "File count size", plugin, {min = 6, max = 40}),
-                numberItem(self, cb.folder_covers, "folder_font_size", "Folder font size", plugin, {min = 6, max = 60}),
-                numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, {min = 0, max = 10})
-            }
-        }
+                numberItem(
+                    self,
+                    cb.folder_covers,
+                    "file_count_size",
+                    "File count font size",
+                    plugin,
+                    { min = 6, max = 40 }
+                ),
+                numberItem(
+                    self,
+                    cb.folder_covers,
+                    "folder_font_size",
+                    "Folder font size",
+                    plugin,
+                    { min = 6, max = 60 }
+                ),
+                numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, { min = 0, max = 10 }),
+            },
+        },
     }
 end
 
@@ -797,9 +835,9 @@ function SettingsManager:getBadgesMenu(plugin)
     return {
         {
             text = _("Progress bar"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.progress_bar, "enabled", "Enable progress bar", plugin),
-				checkboxItem(self, cb.progress_bar, "colored", "Colored", plugin),
+                checkboxItem(self, cb.progress_bar, "colored", "Colored", plugin),
                 {
                     text = _("Position"),
                     sub_item_table = {
@@ -815,7 +853,7 @@ function SettingsManager:getBadgesMenu(plugin)
                                 if plugin then
                                     plugin:refresh()
                                 end
-                            end
+                            end,
                         },
                         {
                             text = _("Bottom"),
@@ -829,100 +867,168 @@ function SettingsManager:getBadgesMenu(plugin)
                                 if plugin then
                                     plugin:refresh()
                                 end
-                            end
+                            end,
                         },
-                        numberItem(self, cb.progress_bar, "inset_y", "Distance from edge", plugin, {min = 0, max = 300}),
-                        numberItem(self, cb.progress_bar, "move_on_x", "Move left/right", plugin, {min = -300, max = 300}),
-                        numberItem(self, cb.progress_bar, "move_on_y", "Move up/down", plugin, {min = -300, max = 300}),
-                        numberItem(self, cb.progress_bar, "gap_to_icon", "Gap to icon", plugin, {min = 0, max = 100}),
-                        numberItem(self, cb.progress_bar, "inset_x", "Horizontal inset", plugin, {min = 0, max = 300})
-                    }
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "inset_y",
+                            "Distance from edge",
+                            plugin,
+                            { min = 0, max = 300 }
+                        ),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "move_on_x",
+                            "Horizontal offset",
+                            plugin,
+                            { min = -300, max = 300 }
+                        ),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "move_on_y",
+                            "Vertical offset",
+                            plugin,
+                            { min = -300, max = 300 }
+                        ),
+                        numberItem(self, cb.progress_bar, "gap_to_icon", "Gap to icon", plugin, { min = 0, max = 100 }),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "inset_x",
+                            "Horizontal inset",
+                            plugin,
+                            { min = 0, max = 300 }
+                        ),
+                    },
                 },
                 {
                     text = _("Colors"),
                     sub_item_table = {
                         colorItem(self, cb.progress_bar, "track_color", "Background color", plugin),
-                        colorItem(self, cb.progress_bar, "fill_color", "Fill color", plugin, {rgb_key = "fill_color_rgb"}),
-                        colorItem(self, cb.progress_bar, "abandoned_color", "Abandoned color", plugin, {rgb_key = "abandoned_color_rgb"})
-                    }
+                        colorItem(
+                            self,
+                            cb.progress_bar,
+                            "fill_color",
+                            "Fill color",
+                            plugin,
+                            { rgb_key = "fill_color_rgb" }
+                        ),
+                        colorItem(
+                            self,
+                            cb.progress_bar,
+                            "abandoned_color",
+                            "Abandoned color",
+                            plugin,
+                            { rgb_key = "abandoned_color_rgb" }
+                        ),
+                    },
                 },
                 {
                     text = _("Shape"),
                     sub_item_table = {
-                        numberItem(self, cb.progress_bar, "bar_h", "Bar height", plugin, {min = 1, max = 30}),
-                        numberItem(self, cb.progress_bar, "bar_radius", "Bar radius", plugin, {min = 0, max = 15})
-                    }
-                }
-            }
+                        numberItem(self, cb.progress_bar, "bar_h", "Bar height", plugin, { min = 1, max = 30 }),
+                        numberItem(self, cb.progress_bar, "bar_radius", "Bar radius", plugin, { min = 0, max = 15 }),
+                    },
+                },
+            },
         },
         {
             text = _("Percentage badge"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.percent_badge, "enabled", "Enable percentage badge", plugin),
                 choiceItem(self, cb.percent_badge, "position", "Position", {
-                    {label = "Top left", value = "top_left"},
-                    {label = "Top right", value = "top_right"},
-                    {label = "Bottom left", value = "bottom_left"},
-                    {label = "Bottom right", value = "bottom_right"}
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.percent_badge, "text_size", "Text size", plugin, {min = 0.1, max = 2}),
-                numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, {min = -300, max = 300}),
-                numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, {min = -300, max = 300}),
-                numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, {min = 20, max = 200}),
-                numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, {min = 20, max = 200}),
-                numberItem(self, cb.percent_badge, "bump_up", "Bump up", plugin, {min = 0, max = 10})
-            }
+                numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 2 }),
+                numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, { min = 20, max = 200 }),
+                numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, { min = 20, max = 200 }),
+                numberItem(self, cb.percent_badge, "bump_up", "Bump up", plugin, { min = 0, max = 10 }),
+            },
         },
         {
             text = _("Pages badge"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.pages_badge, "enabled", "Enable pages badge", plugin),
                 choiceItem(self, cb.pages_badge, "position", "Position", {
-                    {label = "Top left", value = "top_left"},
-                    {label = "Top right", value = "top_right"},
-                    {label = "Bottom left", value = "bottom_left"},
-                    {label = "Bottom right", value = "bottom_right"}
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, {min = 0.1, max = 2}),
-                numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
-                numberItem(self, cb.pages_badge, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
-                numberItem(self, cb.pages_badge, "x_offset", "Horizontal offset", plugin, {min = -300, max = 300}),
-                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, {min = -300, max = 300}),
+                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 0.1, max = 2 }),
+                numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, { min = 0, max = 10 }),
+                numberItem(
+                    self,
+                    cb.pages_badge,
+                    "border_corner_radius",
+                    "Border corner radius",
+                    plugin,
+                    { min = 0, max = 30 }
+                ),
+                numberItem(self, cb.pages_badge, "x_offset", "Horizontal offset", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, { min = -300, max = 300 }),
                 {
                     text = _("Colors"),
                     sub_item_table = {
                         colorItem(self, cb.pages_badge, "text_color", "Text color", plugin),
                         colorItem(self, cb.pages_badge, "background_color", "Background color", plugin),
-                        colorItem(self, cb.pages_badge, "border_color", "Border color", plugin)
-                    }
-                }
-            }
+                        colorItem(self, cb.pages_badge, "border_color", "Border color", plugin),
+                    },
+                },
+            },
         },
-		{
+        {
             text = _("Series indicator"),
             sub_item_table = {
                 choiceItem(self, cb.series_indicator, "style", "Style", {
-                    {label = "Off", value = "off"},
-                    {label = "Badge", value = "badge"},
-                    {label = "Flap", value = "bar"}
+                    { label = "Off", value = "off" },
+                    { label = "Badge", value = "badge" },
+                    { label = "Flap", value = "bar" },
                 }, plugin),
-                numberItem(self, cb.series_indicator, "font_size", "Font size", plugin, {min = 6, max = 40}),
-                numberItem(self, cb.series_indicator, "border_thickness", "Border thickness", plugin, {min = 0, max = 10}),
-                numberItem(self, cb.series_indicator, "border_corner_radius", "Border corner radius", plugin, {min = 0, max = 30}),
-                colorItem(self, cb.series_indicator, "text_color", "Text color", plugin),
-                colorItem(self, cb.series_indicator, "border_color", "Border color", plugin),
-                colorItem(self, cb.series_indicator, "background_color", "Background color", plugin)
-            }
+                numberItem(self, cb.series_indicator, "font_size", "Font size", plugin, { min = 6, max = 40 }),
+                numberItem(
+                    self,
+                    cb.series_indicator,
+                    "border_thickness",
+                    "Border thickness",
+                    plugin,
+                    { min = 0, max = 10 }
+                ),
+                numberItem(
+                    self,
+                    cb.series_indicator,
+                    "border_corner_radius",
+                    "Border corner radius",
+                    plugin,
+                    { min = 0, max = 30 }
+                ),
+                {
+                    text = _("Colors"),
+                    sub_item_table = {
+                        colorItem(self, cb.series_indicator, "text_color", "Text color", plugin),
+                        colorItem(self, cb.series_indicator, "border_color", "Border color", plugin),
+                        colorItem(self, cb.series_indicator, "background_color", "Background color", plugin),
+                    },
+                },
+            },
         },
         {
             text = _("Status icons"),
             sub_item_table = {
-                checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin)
-            }
+                checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin),
+            },
         },
         {
             text = _("Collection star"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 {
                     text = _("Enable collection star"),
                     checked_func = collectionStarEnabled,
@@ -931,40 +1037,44 @@ function SettingsManager:getBadgesMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 choiceItem(self, star, "position", "Position", {
-                    {label = "Top left", value = "top_left"},
-                    {label = "Top right", value = "top_right"},
-                    {label = "Bottom left", value = "bottom_left"},
-                    {label = "Bottom right", value = "bottom_right"}
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom right", value = "bottom_right" },
                 }, plugin, collectionStarEnabled),
                 numberItem(self, star, "size", "Size", plugin, {
                     min = 8,
                     max = 100,
-                    enabled_func = collectionStarEnabled
+                    enabled_func = collectionStarEnabled,
                 }),
                 numberItem(self, star, "x_offset", "Horizontal offset", plugin, {
                     min = 0,
                     max = 100,
-                    enabled_func = collectionStarEnabled
+                    enabled_func = collectionStarEnabled,
                 }),
                 numberItem(self, star, "y_offset", "Vertical offset", plugin, {
                     min = 0,
                     max = 100,
-                    enabled_func = collectionStarEnabled
+                    enabled_func = collectionStarEnabled,
                 }),
                 checkboxItem(
-                    self, star, "use_background_circle", "Use background circle", plugin,
+                    self,
+                    star,
+                    "use_background_circle",
+                    "Use background circle",
+                    plugin,
                     collectionStarEnabled
                 ),
                 colorItem(self, star, "background_color", "Background color", plugin, {
                     enabled_func = function()
                         return collectionStarEnabled() and star.use_background_circle
-                    end
-                })
-            }
-        }
+                    end,
+                }),
+            },
+        },
     }
 end
 
@@ -972,22 +1082,22 @@ function SettingsManager:getNavbarMenu(plugin)
     local self_ref = self
     local navbar = self.settings.navbar
     local kaleido_colors = {
-        {name = "Default Blue", color = {0x33, 0x99, 0xFF}},
-        {name = "Ocean Blue", color = {0x1E, 0x88, 0xE5}},
-        {name = "Forest Green", color = {0x43, 0xA0, 0x47}},
-        {name = "Sunset Orange", color = {0xFF, 0x6F, 0x00}},
-        {name = "Royal Purple", color = {0x7B, 0x1F, 0xA2}},
-        {name = "Coral Pink", color = {0xFF, 0x70, 0x43}},
-        {name = "Mint Green", color = {0x00, 0x89, 0x7B}},
-        {name = "Gold", color = {0xFF, 0xA7, 0x26}},
-        {name = "Ruby Red", color = {0xE5, 0x39, 0x35}},
-        {name = "Slate Blue", color = {0x5C, 0x6B, 0xC0}},
-        {name = "Teal", color = {0x00, 0x97, 0xA7}}
+        { name = "Default Blue", color = { 0x33, 0x99, 0xFF } },
+        { name = "Ocean Blue", color = { 0x1E, 0x88, 0xE5 } },
+        { name = "Forest Green", color = { 0x43, 0xA0, 0x47 } },
+        { name = "Sunset Orange", color = { 0xFF, 0x6F, 0x00 } },
+        { name = "Royal Purple", color = { 0x7B, 0x1F, 0xA2 } },
+        { name = "Coral Pink", color = { 0xFF, 0x70, 0x43 } },
+        { name = "Mint Green", color = { 0x00, 0x89, 0x7B } },
+        { name = "Gold", color = { 0xFF, 0xA7, 0x26 } },
+        { name = "Ruby Red", color = { 0xE5, 0x39, 0x35 } },
+        { name = "Slate Blue", color = { 0x5C, 0x6B, 0xC0 } },
+        { name = "Teal", color = { 0x00, 0x97, 0xA7 } },
     }
 
-    return {
+    return groupFeatureMenuItemsWithTrailingAction {
         {
-            text = _("Enable NavBar"),
+            text = _("Enable navigation bar"),
             checked_func = function()
                 return self_ref:isEnabled("navbar")
             end,
@@ -996,7 +1106,7 @@ function SettingsManager:getNavbarMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
             text = _("Size"),
@@ -1012,7 +1122,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "Small",
@@ -1025,7 +1135,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "Medium",
@@ -1038,7 +1148,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "Large",
@@ -1051,7 +1161,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "Huge",
@@ -1064,9 +1174,9 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
-                }
-            }
+                    end,
+                },
+            },
         },
         {
             text = _("Show labels"),
@@ -1079,7 +1189,7 @@ function SettingsManager:getNavbarMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
             text = _("Label font size"),
@@ -1098,7 +1208,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "14",
@@ -1111,7 +1221,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "16",
@@ -1124,7 +1234,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = "18",
@@ -1137,23 +1247,25 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Custom"),
                     keep_menu_open = true,
                     callback = function(touchmenu)
                         local dlg
-                        dlg =
-                            InputDialog:new {
+                        dlg = InputDialog:new {
                             title = _("Font size"),
                             input = tostring(navbar.label_font_size),
                             hint = _("Enter font size (5-30)"),
                             buttons = {
                                 {
-                                    {text = _("Cancel"), callback = function()
+                                    {
+                                        text = _("Cancel"),
+                                        callback = function()
                                             UIManager:close(dlg)
-                                        end},
+                                        end,
+                                    },
                                     {
                                         text = _("Set"),
                                         is_enter_default = true,
@@ -1170,16 +1282,16 @@ function SettingsManager:getNavbarMenu(plugin)
                                                     plugin:refresh()
                                                 end
                                             end
-                                        end
-                                    }
-                                }
-                            }
+                                        end,
+                                    },
+                                },
+                            },
                         }
                         UIManager:show(dlg)
                         dlg:onShowKeyboard()
-                    end
-                }
-            }
+                    end,
+                },
+            },
         },
         {
             text = _("Show top border"),
@@ -1192,7 +1304,7 @@ function SettingsManager:getNavbarMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
             text = _("Show top gap"),
@@ -1205,7 +1317,7 @@ function SettingsManager:getNavbarMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
             text = _("Show in standalone views"),
@@ -1218,7 +1330,7 @@ function SettingsManager:getNavbarMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-            end
+            end,
         },
         {
             text = _("Active tab"),
@@ -1234,7 +1346,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Bold"),
@@ -1250,7 +1362,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Underline"),
@@ -1266,7 +1378,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text_func = function()
@@ -1281,7 +1393,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Colored"),
@@ -1297,7 +1409,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text_func = function()
@@ -1310,27 +1422,24 @@ function SettingsManager:getNavbarMenu(plugin)
                     sub_item_table = (function()
                         local items = {}
                         for i, color in ipairs(kaleido_colors) do
-                            table.insert(
-                                items,
-                                {
-                                    text = _(color.name),
-                                    checked_func = function()
-                                        return navbar.active_color_index == i - 1
-                                    end,
-                                    callback = function()
-                                        navbar.active_color_index = i - 1
-                                        self_ref:save()
-                                        if plugin then
-                                            plugin:refresh()
-                                        end
+                            table.insert(items, {
+                                text = _(color.name),
+                                checked_func = function()
+                                    return navbar.active_color_index == i - 1
+                                end,
+                                callback = function()
+                                    navbar.active_color_index = i - 1
+                                    self_ref:save()
+                                    if plugin then
+                                        plugin:refresh()
                                     end
-                                }
-                            )
+                                end,
+                            })
                         end
                         return items
-                    end)()
-                }
-            }
+                    end)(),
+                },
+            },
         },
         {
             text = _("Tabs"),
@@ -1341,10 +1450,10 @@ function SettingsManager:getNavbarMenu(plugin)
                     callback = function(touchmenu)
                         local sort_items = {}
                         local custom_by_id = {}
-                        for _, ct in ipairs(navbar.custom_tabs) do
+                        for __, ct in ipairs(navbar.custom_tabs) do
                             custom_by_id[ct.id] = ct.label
                         end
-                        for index, id in ipairs(navbar.tab_order) do
+                        for __, id in ipairs(navbar.tab_order) do
                             local label
                             if custom_by_id[id] then
                                 label = custom_by_id[id]
@@ -1357,36 +1466,30 @@ function SettingsManager:getNavbarMenu(plugin)
                             else
                                 label = _(id:gsub("^%l", string.upper))
                             end
-                            table.insert(
-                                sort_items,
-                                {
-                                    text = label,
-                                    orig_item = id,
-                                    dim = not navbar.show_tabs[id]
-                                }
-                            )
+                            table.insert(sort_items, {
+                                text = label,
+                                orig_item = id,
+                                dim = not navbar.show_tabs[id],
+                            })
                         end
-                        UIManager:show(
-                            SortWidget:new {
-                                title = _("Arrange NavBar tabs"),
-                                item_table = sort_items,
-                                callback = function()
-                                    for i, item in ipairs(sort_items) do
-                                        navbar.tab_order[i] = item.orig_item
-                                    end
-                                    self_ref:save()
-                                    if touchmenu then
-                                        touchmenu:updateItems()
-                                    end
-                                    if plugin then
-                                        plugin:refresh()
-                                    end
+                        UIManager:show(SortWidget:new {
+                            title = _("Arrange navigation bar tabs"),
+                            item_table = sort_items,
+                            callback = function()
+                                for i, item in ipairs(sort_items) do
+                                    navbar.tab_order[i] = item.orig_item
                                 end
-                            }
-                        )
-                    end
+                                self_ref:save()
+                                if touchmenu then
+                                    touchmenu:updateItems()
+                                end
+                                if plugin then
+                                    plugin:refresh()
+                                end
+                            end,
+                        })
+                    end,
                 },
-                -- Add individual tab toggles
                 {
                     text = _("Books"),
                     checked_func = function()
@@ -1398,7 +1501,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Manga"),
@@ -1411,7 +1514,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("News"),
@@ -1424,7 +1527,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Continue"),
@@ -1437,7 +1540,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("History"),
@@ -1450,7 +1553,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Favorites"),
@@ -1463,7 +1566,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Collections"),
@@ -1476,7 +1579,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Z-Lib"),
@@ -1489,7 +1592,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Anna's Archive"),
@@ -1502,7 +1605,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("AppStore"),
@@ -1515,7 +1618,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("OPDS"),
@@ -1528,10 +1631,10 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
-                    text = _("Reading Stats"),
+                    text = _("Reading stats"),
                     checked_func = function()
                         return navbar.show_tabs.stats
                     end,
@@ -1541,7 +1644,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Exit"),
@@ -1554,7 +1657,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Sleep"),
@@ -1567,7 +1670,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Restart"),
@@ -1580,7 +1683,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Previous page"),
@@ -1593,7 +1696,7 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
+                    end,
                 },
                 {
                     text = _("Next page"),
@@ -1606,187 +1709,179 @@ function SettingsManager:getNavbarMenu(plugin)
                         if plugin then
                             plugin:refresh()
                         end
-                    end
-                }
-            }
+                    end,
+                },
+            },
         },
         {
             text = _("Custom tabs"),
             sub_item_table_func = function()
                 local items = {}
 
-                -- List existing custom tabs
                 for i, ct in ipairs(navbar.custom_tabs) do
                     local idx = i
-                    table.insert(
-                        items,
-                        {
-                            text_func = function()
-                                return ct.label
-                            end,
-                            checked_func = function()
-                                return navbar.show_tabs[ct.id]
-                            end,
-                            callback = function()
-                                navbar.show_tabs[ct.id] = not navbar.show_tabs[ct.id]
-                                self_ref:save()
-                                if plugin then
-                                    plugin:refresh()
-                                end
-                            end,
-                            hold_callback = function(touchmenu)
-                                UIManager:show(
-                                    ConfirmBox:new {
-                                        text = _("Remove tab '") .. ct.label .. _("'?"),
-                                        ok_callback = function()
-                                            navbar.show_tabs[ct.id] = nil
-                                            for j = #navbar.tab_order, 1, -1 do
-                                                if navbar.tab_order[j] == ct.id then
-                                                    table.remove(navbar.tab_order, j)
-                                                end
-                                            end
-                                            table.remove(navbar.custom_tabs, idx)
-                                            self_ref:save()
-                                            if touchmenu then
-                                                touchmenu:updateItems()
-                                            end
-                                            if plugin then
-                                                plugin:refresh()
-                                            end
-                                        end
-                                    }
-                                )
+                    table.insert(items, {
+                        text_func = function()
+                            return ct.label
+                        end,
+                        checked_func = function()
+                            return navbar.show_tabs[ct.id]
+                        end,
+                        callback = function()
+                            navbar.show_tabs[ct.id] = not navbar.show_tabs[ct.id]
+                            self_ref:save()
+                            if plugin then
+                                plugin:refresh()
                             end
-                        }
-                    )
+                        end,
+                        hold_callback = function(touchmenu)
+                            UIManager:show(ConfirmBox:new {
+                                text = _("Remove tab '") .. ct.label .. _("'?"),
+                                ok_callback = function()
+                                    navbar.show_tabs[ct.id] = nil
+                                    for j = #navbar.tab_order, 1, -1 do
+                                        if navbar.tab_order[j] == ct.id then
+                                            table.remove(navbar.tab_order, j)
+                                        end
+                                    end
+                                    table.remove(navbar.custom_tabs, idx)
+                                    self_ref:save()
+                                    if touchmenu then
+                                        touchmenu:updateItems()
+                                    end
+                                    if plugin then
+                                        plugin:refresh()
+                                    end
+                                end,
+                            })
+                        end,
+                    })
                 end
 
-                -- Add folder tab option
-                table.insert(
-                    items,
-                    {
-                        text = _("+ Add folder tab"),
-                        separator = true,
-                        callback = function(touchmenu)
-                            local path_chooser =
-                                PathChooser:new {
-                                select_file = false,
-                                show_files = false,
-                                path = G_reader_settings:readSetting("lastdir") or "/",
-                                onConfirm = function(dir_path)
-                                    local icon_dlg
-                                    icon_dlg =
-                                        InputDialog:new {
-                                        title = _("Icon name"),
-                                        hint = T(
-                                            _("appbar.filebrowser"),
-                                            "my_icon",
-                                            DataStorage:getDataDir() .. "/icons"
-                                        ),
-                                        input = "appbar.filebrowser",
-                                        buttons = {
+                table.insert(items, {
+                    text = _("+ Add folder tab"),
+                    separator = true,
+                    callback = function(touchmenu)
+                        local path_chooser = PathChooser:new {
+                            select_file = false,
+                            show_files = false,
+                            path = G_reader_settings:readSetting("lastdir") or "/",
+                            onConfirm = function(dir_path)
+                                local icon_dlg
+                                icon_dlg = InputDialog:new {
+                                    title = _("Icon name"),
+                                    hint = T(
+                                        _("Place %1.svg or %1.png in %2, then enter %1 with or without the extension."),
+                                        "my_icon",
+                                        DataStorage:getDataDir() .. "/icons"
+                                    ),
+                                    input = "appbar.filebrowser",
+                                    buttons = {
+                                        {
                                             {
-                                                {text = _("Cancel"), callback = function()
-                                                        UIManager:close(icon_dlg)
-                                                    end},
-                                                {
-                                                    text = _("Next"),
-                                                    is_enter_default = true,
-                                                    callback = function()
-                                                        local icon = icon_dlg:getInputText()
-                                                        if not icon or icon == "" then
-                                                            icon = "appbar.filebrowser"
-                                                        end
-                                                        UIManager:close(icon_dlg)
-                                                        local util = require("util")
-                                                        local folder_name = select(2, util.splitFilePathName(dir_path))
-                                                        local label_dlg
-                                                        label_dlg =
-                                                            InputDialog:new {
-                                                            title = _("Tab label"),
-                                                            input = folder_name or "Folder",
-                                                            buttons = {
-                                                                {
-                                                                    {text = _("Cancel"), callback = function()
-                                                                            UIManager:close(label_dlg)
-                                                                        end},
-                                                                    {
-                                                                        text = _("Add tab"),
-                                                                        is_enter_default = true,
-                                                                        callback = function()
-                                                                            local label =
-                                                                                label_dlg:getInputText() or folder_name or
-                                                                                "Folder"
-                                                                            UIManager:close(label_dlg)
-                                                                            local new_id =
-                                                                                "folder_" .. dir_path:gsub("[^%w]", "_")
-                                                                            local new_ct = {
-                                                                                id = new_id,
-                                                                                label = label,
-                                                                                icon = icon,
-                                                                                source = "folder",
-                                                                                folder_path = dir_path
-                                                                            }
-                                                                            local found = false
-                                                                            for i, ct in ipairs(navbar.custom_tabs) do
-                                                                                if ct.id == new_id then
-                                                                                    navbar.custom_tabs[i] = new_ct
-                                                                                    found = true
-                                                                                    break
-                                                                                end
-                                                                            end
-                                                                            if not found then
-                                                                                table.insert(navbar.custom_tabs, new_ct)
-                                                                                navbar.show_tabs[new_id] = true
-                                                                                table.insert(navbar.tab_order, new_id)
-                                                                            end
-                                                                            self_ref:save()
-                                                                            if touchmenu then
-                                                                                touchmenu:updateItems()
-                                                                            end
-                                                                            if plugin then
-                                                                                plugin:refresh()
-                                                                            end
-                                                                            UIManager:show(
-                                                                                InfoMessage:new {
-                                                                                    text = _(
-                                                                                        "Folder tab added! Place the icon in 'koreader/icons' folder and restart Koreader."
-                                                                                    ),
-                                                                                }
-                                                                            )
-                                                                        end
-                                                                    }
-                                                                }
-                                                            }
-                                                        }
-                                                        UIManager:show(label_dlg)
-                                                        label_dlg:onShowKeyboard()
+                                                text = _("Cancel"),
+                                                callback = function()
+                                                    UIManager:close(icon_dlg)
+                                                end,
+                                            },
+                                            {
+                                                text = _("Next"),
+                                                is_enter_default = true,
+                                                callback = function()
+                                                    local icon = icon_dlg:getInputText()
+                                                    if not icon or icon == "" then
+                                                        icon = "appbar.filebrowser"
                                                     end
-                                                }
-                                            }
-                                        }
-                                    }
-                                    UIManager:show(icon_dlg)
-                                    icon_dlg:onShowKeyboard()
-                                end
-                            }
-                            UIManager:show(path_chooser)
-                        end
-                    }
-                )
+                                                    UIManager:close(icon_dlg)
+                                                    local util = require("util")
+                                                    local folder_name = select(2, util.splitFilePathName(dir_path))
+                                                    local label_dlg
+                                                    label_dlg = InputDialog:new {
+                                                        title = _("Tab label"),
+                                                        input = folder_name or "Folder",
+                                                        buttons = {
+                                                            {
+                                                                {
+                                                                    text = _("Cancel"),
+                                                                    callback = function()
+                                                                        UIManager:close(label_dlg)
+                                                                    end,
+                                                                },
+                                                                {
+                                                                    text = _("Add tab"),
+                                                                    is_enter_default = true,
+                                                                    callback = function()
+                                                                        local label = label_dlg:getInputText()
+                                                                            or folder_name
+                                                                            or "Folder"
+                                                                        UIManager:close(label_dlg)
+                                                                        local new_id = "folder_"
+                                                                            .. dir_path:gsub("[^%w]", "_")
+                                                                        local new_ct = {
+                                                                            id = new_id,
+                                                                            label = label,
+                                                                            icon = icon,
+                                                                            source = "folder",
+                                                                            folder_path = dir_path,
+                                                                        }
+                                                                        local found = false
+                                                                        for i, ct in ipairs(navbar.custom_tabs) do
+                                                                            if ct.id == new_id then
+                                                                                navbar.custom_tabs[i] = new_ct
+                                                                                found = true
+                                                                                break
+                                                                            end
+                                                                        end
+                                                                        if not found then
+                                                                            table.insert(navbar.custom_tabs, new_ct)
+                                                                            navbar.show_tabs[new_id] = true
+                                                                            table.insert(navbar.tab_order, new_id)
+                                                                        end
+                                                                        self_ref:save()
+                                                                        if touchmenu then
+                                                                            touchmenu:updateItems()
+                                                                        end
+                                                                        if plugin then
+                                                                            plugin:refresh()
+                                                                        end
+                                                                        UIManager:show(
+                                                                            InfoMessage:new {
+                                                                                text = _("Folder tab added."),
+                                                                                timeout = 2,
+                                                                            }
+                                                                        )
+                                                                    end,
+                                                                },
+                                                            },
+                                                        },
+                                                    }
+                                                    UIManager:show(label_dlg)
+                                                    label_dlg:onShowKeyboard()
+                                                end,
+                                            },
+                                        },
+                                    },
+                                }
+                                UIManager:show(icon_dlg)
+                                icon_dlg:onShowKeyboard()
+                            end,
+                        }
+                        UIManager:show(path_chooser)
+                    end,
+                })
 
-                return items
-            end
+                return groupMenuItems(items)
+            end,
         },
         {
-            text = _("Refresh NavBar"),
+            text = _("Refresh navigation bar"),
             separator = true,
             callback = function()
                 if plugin then
                     plugin:refresh()
                 end
-            end
-        }
+            end,
+        },
     }
 end
 

@@ -8,7 +8,7 @@ local util = require("util")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local PageNumberSubtitles = {name = "page_number_subtitles"}
+local PageNumberSubtitles = { name = "page_number_subtitles" }
 
 function PageNumberSubtitles:new(o)
     o = o or {}
@@ -233,9 +233,6 @@ function PageNumberSubtitles:getMenuItem()
             toggleItem("Collections", "collections"),
         },
     }
-end
-
-function PageNumberSubtitles:reinit()
 end
 
 return PageNumberSubtitles

@@ -27,7 +27,7 @@ local vosicons = require("modules/vosicons")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
-local QuickSettings = {name = "quick_settings"}
+local QuickSettings = { name = "quick_settings" }
 local quick_icons = {
     quicksettings = true,
     quick_wifi = true,
@@ -45,9 +45,22 @@ local quick_icons = {
 }
 
 local button_order = {
-    "wifi", "night", "rotate", "usb", "search", "quickrss", "cloud",
-    "zlibrary", "calibre", "notion", "streak", "opds", "restart", "exit",
-    "sleep", "screenshot",
+    "wifi",
+    "night",
+    "rotate",
+    "usb",
+    "search",
+    "quickrss",
+    "cloud",
+    "zlibrary",
+    "calibre",
+    "notion",
+    "streak",
+    "opds",
+    "restart",
+    "exit",
+    "sleep",
+    "screenshot",
 }
 
 local button_names = {
@@ -92,7 +105,7 @@ end
 
 local function showMissing(name)
     local InfoMessage = require("ui/widget/infomessage")
-    UIManager:show(InfoMessage:new{text = T(_("%1 plugin is not installed."), name)})
+    UIManager:show(InfoMessage:new { text = T(_("%1 plugin is not installed."), name) })
 end
 
 local button_defs = {
@@ -108,7 +121,9 @@ local button_defs = {
             end
             return _("Wi-Fi")
         end,
-        active_func = function() return NetworkMgr:isWifiOn() end,
+        active_func = function()
+            return NetworkMgr:isWifiOn()
+        end,
         callback = function(menu)
             if NetworkMgr:isWifiOn() then
                 NetworkMgr:toggleWifiOff()
@@ -125,7 +140,9 @@ local button_defs = {
     night = {
         icon = "quick_nightmode",
         label = "Night",
-        active_func = function() return G_reader_settings:isTrue("night_mode") end,
+        active_func = function()
+            return G_reader_settings:isTrue("night_mode")
+        end,
         callback = function(menu)
             local enabled = G_reader_settings:isTrue("night_mode")
             Screen:toggleNightMode()
@@ -138,7 +155,9 @@ local button_defs = {
     rotate = {
         icon = "quick_rotate",
         label = "Rotate",
-        callback = function() UIManager:broadcastEvent(Event:new("SwapRotation")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("SwapRotation"))
+        end,
     },
     usb = {
         icon = "quick_usb",
@@ -152,7 +171,9 @@ local button_defs = {
     search = {
         icon = "quick_search",
         label = "Search",
-        callback = function() UIManager:broadcastEvent(Event:new("ShowFileSearch")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ShowFileSearch"))
+        end,
     },
     quickrss = {
         icon = "quick_rss",
@@ -163,7 +184,7 @@ local button_defs = {
                 showMissing("QuickRSS")
                 return
             end
-            local view = QuickRSSUI:new{}
+            local view = QuickRSSUI:new {}
             UIManager:show(view)
             view:_fetch()
         end,
@@ -171,12 +192,16 @@ local button_defs = {
     cloud = {
         icon = "quick_cloud",
         label = "Cloud",
-        callback = function() UIManager:broadcastEvent(Event:new("ShowCloudStorage")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ShowCloudStorage"))
+        end,
     },
     zlibrary = {
         icon = "quick_search",
         label = "Z-Lib",
-        callback = function() UIManager:broadcastEvent(Event:new("ZlibrarySearch")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ZlibrarySearch"))
+        end,
     },
     calibre = {
         icon = "quick_wifi",
@@ -187,10 +212,12 @@ local button_defs = {
         end,
         callback = function(menu)
             local wireless = package.loaded.wireless
-            local event = wireless and wireless.calibre_socket
-                and "CloseWirelessConnection" or "StartWirelessConnection"
+            local event = wireless and wireless.calibre_socket and "CloseWirelessConnection"
+                or "StartWirelessConnection"
             UIManager:broadcastEvent(Event:new(event))
-            UIManager:scheduleIn(1, function() menu:updateItems(1) end)
+            UIManager:scheduleIn(1, function()
+                menu:updateItems(1)
+            end)
         end,
     },
     notion = {
@@ -208,21 +235,27 @@ local button_defs = {
     streak = {
         icon = "quick_streak",
         label = "Streak",
-        callback = function() UIManager:broadcastEvent(Event:new("ShowReadingStreakCalendar")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ShowReadingStreakCalendar"))
+        end,
     },
     opds = {
         icon = "quick_cloud",
         label = "OPDS",
-        callback = function() UIManager:broadcastEvent(Event:new("ShowOPDSCatalog")) end,
+        callback = function()
+            UIManager:broadcastEvent(Event:new("ShowOPDSCatalog"))
+        end,
     },
     restart = {
         icon = "quick_restart",
         label = "Restart",
         callback = function()
-            UIManager:show(ConfirmBox:new{
+            UIManager:show(ConfirmBox:new {
                 text = _("Are you sure you want to restart KOReader?"),
                 ok_text = _("Restart"),
-                ok_callback = function() UIManager:broadcastEvent(Event:new("Restart")) end,
+                ok_callback = function()
+                    UIManager:broadcastEvent(Event:new("Restart"))
+                end,
             })
         end,
     },
@@ -230,10 +263,12 @@ local button_defs = {
         icon = "quick_exit",
         label = "Exit",
         callback = function()
-            UIManager:show(ConfirmBox:new{
+            UIManager:show(ConfirmBox:new {
                 text = _("Are you sure you want to exit KOReader?"),
                 ok_text = _("Exit"),
-                ok_callback = function() UIManager:broadcastEvent(Event:new("Exit")) end,
+                ok_callback = function()
+                    UIManager:broadcastEvent(Event:new("Exit"))
+                end,
             })
         end,
     },
@@ -260,7 +295,7 @@ local button_defs = {
                 util.makePath(directory)
                 Screen:shot(directory .. "/screenshot_" .. os.date("%Y%m%d_%H%M%S") .. ".png")
                 local InfoMessage = require("ui/widget/infomessage")
-                UIManager:show(InfoMessage:new{text = _("Screenshot saved"), timeout = 2})
+                UIManager:show(InfoMessage:new { text = _("Screenshot saved"), timeout = 2 })
             end)
         end,
     },
@@ -268,27 +303,30 @@ local button_defs = {
 
 local function actionButton(menu, definition, size)
     local icon_size = math.floor(size * 0.5)
-    local icon = IconWidget:new(vosicons.icon(definition.icon, {width = icon_size, height = icon_size}))
+    local icon = IconWidget:new(vosicons.icon(definition.icon, { width = icon_size, height = icon_size }))
     local active = definition.active_func and definition.active_func()
-    local circle = FrameContainer:new{
+    local circle = FrameContainer:new {
         width = size,
         height = size,
         radius = math.floor(size / 2),
         bordersize = Screen:scaleBySize(2),
         background = active and Blitbuffer.COLOR_LIGHT_GRAY or Blitbuffer.COLOR_WHITE,
         padding = 0,
-        CenterContainer:new{dimen = Geom:new{w = size - 4, h = size - 4}, icon},
+        CenterContainer:new { dimen = Geom:new { w = size - 4, h = size - 4 }, icon },
     }
     local label = definition.label_func and definition.label_func() or _(definition.label)
-    return VerticalGroup:new{
+    return VerticalGroup:new {
         align = "center",
         circle,
-        VerticalSpan:new{width = Screen:scaleBySize(2)},
-        TextWidget:new{text = label, face = Font:getFace("xx_smallinfofont"), max_width = size + 4},
-    }, {
-        widget = circle,
-        callback = function() definition.callback(menu) end,
-    }
+        VerticalSpan:new { width = Screen:scaleBySize(2) },
+        TextWidget:new { text = label, face = Font:getFace("xx_smallinfofont"), max_width = size + 4 },
+    },
+        {
+            widget = circle,
+            callback = function()
+                definition.callback(menu)
+            end,
+        }
 end
 
 local function addSlider(panel, refs, menu, label, state, use_buttons)
@@ -297,8 +335,9 @@ local function addSlider(panel, refs, menu, label, state, use_buttons)
     local max_width = Screen:scaleBySize(50)
     local gap = Screen:scaleBySize(4)
     local slider_width = width - small_width * 2 - max_width - gap * 3
-    local minus = Button:new{text = "−", width = small_width, show_parent = menu.show_parent, callback = function() end}
-    local value_label = TextWidget:new{
+    local minus =
+        Button:new { text = "−", width = small_width, show_parent = menu.show_parent, callback = function() end }
+    local value_label = TextWidget:new {
         text = _(label) .. ": " .. state.cur,
         face = Font:getFace("ffont"),
         max_width = width,
@@ -321,7 +360,7 @@ local function addSlider(panel, refs, menu, label, state, use_buttons)
         refresh()
     end
     if use_buttons then
-        progress = ButtonProgressWidget:new{
+        progress = ButtonProgressWidget:new {
             width = slider_width,
             height = minus:getSize().h,
             font_size = 20,
@@ -330,12 +369,14 @@ local function addSlider(panel, refs, menu, label, state, use_buttons)
             num_buttons = math.max(1, math.ceil((state.max - state.min) / stride)),
             position = math.floor(state.cur / stride),
             default_position = math.floor(state.cur / stride),
-            callback = function(index) setValue(math.min(state.max, Math.round(index * stride))) end,
+            callback = function(index)
+                setValue(math.min(state.max, Math.round(index * stride)))
+            end,
             show_parent = menu.show_parent,
             enabled = true,
         }
     else
-        progress = ProgressWidget:new{
+        progress = ProgressWidget:new {
             width = slider_width,
             height = minus:getSize().h,
             percentage = (state.cur - state.min) / math.max(1, state.max - state.min),
@@ -345,27 +386,46 @@ local function addSlider(panel, refs, menu, label, state, use_buttons)
         refs.progress_state = state
         refs.setProgress = setValue
     end
-    minus.callback = function() setValue(state.cur - 1) end
-    local plus = Button:new{
-        text = "＋", width = small_width, show_parent = menu.show_parent,
-        callback = function() setValue(state.cur + 1) end,
+    minus.callback = function()
+        setValue(state.cur - 1)
+    end
+    local plus = Button:new {
+        text = "＋",
+        width = small_width,
+        show_parent = menu.show_parent,
+        callback = function()
+            setValue(state.cur + 1)
+        end,
     }
-    local maximum = Button:new{
-        text = _("Max"), width = max_width, show_parent = menu.show_parent,
-        callback = function() setValue(state.max) end,
+    local maximum = Button:new {
+        text = _("Max"),
+        width = max_width,
+        show_parent = menu.show_parent,
+        callback = function()
+            setValue(state.max)
+        end,
     }
     table.insert(panel, value_label)
-    table.insert(panel, VerticalSpan:new{width = Screen:scaleBySize(8)})
-    table.insert(panel, HorizontalGroup:new{
-        align = "center", minus, HorizontalSpan:new{width = gap}, progress,
-        HorizontalSpan:new{width = gap}, plus, HorizontalSpan:new{width = gap}, maximum,
-    })
+    table.insert(panel, VerticalSpan:new { width = Screen:scaleBySize(8) })
+    table.insert(
+        panel,
+        HorizontalGroup:new {
+            align = "center",
+            minus,
+            HorizontalSpan:new { width = gap },
+            progress,
+            HorizontalSpan:new { width = gap },
+            plus,
+            HorizontalSpan:new { width = gap },
+            maximum,
+        }
+    )
 end
 
 function QuickSettings:createPanel(menu)
     local cfg = self:cfg()
-    local refs = {buttons = {}}
-    local panel = VerticalGroup:new{align = "center", VerticalSpan:new{width = Screen:scaleBySize(12)}}
+    local refs = { buttons = {} }
+    local panel = VerticalGroup:new { align = "center", VerticalSpan:new { width = Screen:scaleBySize(12) } }
     local visible = {}
     for index = 1, #cfg.button_order do
         local id = cfg.button_order[index]
@@ -377,17 +437,17 @@ function QuickSettings:createPanel(menu)
         local size = Screen:scaleBySize(64)
         local inner_width = menu.item_width - Screen:scaleBySize(20)
         local gap = math.max(0, math.floor((inner_width - #visible * size) / math.max(1, #visible - 1)))
-        local row = HorizontalGroup:new{align = "center"}
+        local row = HorizontalGroup:new { align = "center" }
         for index, definition in ipairs(visible) do
             local widget, ref = actionButton(menu, definition, size)
             table.insert(row, widget)
             table.insert(refs.buttons, ref)
             if index < #visible then
-                table.insert(row, HorizontalSpan:new{width = gap})
+                table.insert(row, HorizontalSpan:new { width = gap })
             end
         end
-        table.insert(panel, CenterContainer:new{dimen = Geom:new{w = menu.item_width, h = row:getSize().h}, row})
-        table.insert(panel, VerticalSpan:new{width = Screen:scaleBySize(8)})
+        table.insert(panel, CenterContainer:new { dimen = Geom:new { w = menu.item_width, h = row:getSize().h }, row })
+        table.insert(panel, VerticalSpan:new { width = Screen:scaleBySize(8) })
     end
     local powerd = Device:getPowerDevice()
     if cfg.show_frontlight and Device:hasFrontlight() then
@@ -395,21 +455,29 @@ function QuickSettings:createPanel(menu)
             min = powerd.fl_min,
             max = powerd.fl_max,
             cur = powerd:frontlightIntensity(),
-            get = function() return powerd:frontlightIntensity() end,
-            set = function(value) powerd:setIntensity(value) end,
+            get = function()
+                return powerd:frontlightIntensity()
+            end,
+            set = function(value)
+                powerd:setIntensity(value)
+            end,
         }, false)
     end
     if cfg.show_warmth and Device:hasNaturalLight() then
-        table.insert(panel, VerticalSpan:new{width = Screen:scaleBySize(14)})
+        table.insert(panel, VerticalSpan:new { width = Screen:scaleBySize(14) })
         addSlider(panel, refs, menu, "Warmth", {
             min = powerd.fl_warmth_min,
             max = powerd.fl_warmth_max,
             cur = powerd:toNativeWarmth(powerd:frontlightWarmth()),
-            get = function() return powerd:toNativeWarmth(powerd:frontlightWarmth()) end,
-            set = function(value) powerd:setWarmth(powerd:fromNativeWarmth(value)) end,
+            get = function()
+                return powerd:toNativeWarmth(powerd:frontlightWarmth())
+            end,
+            set = function(value)
+                powerd:setWarmth(powerd:fromNativeWarmth(value))
+            end,
         }, true)
     end
-    table.insert(panel, VerticalSpan:new{width = Screen:scaleBySize(8)})
+    table.insert(panel, VerticalSpan:new { width = Screen:scaleBySize(8) })
     menu._vos_quick_settings_refs = refs
     return panel
 end
@@ -580,9 +648,9 @@ function QuickSettings:getMenuItem()
             local items = {}
             for index = 1, #cfg.button_order do
                 local id = cfg.button_order[index]
-                table.insert(items, {text = _(button_names[id]), orig_item = id, dim = not cfg.show_buttons[id]})
+                table.insert(items, { text = _(button_names[id]), orig_item = id, dim = not cfg.show_buttons[id] })
             end
-            UIManager:show(SortWidget:new{
+            UIManager:show(SortWidget:new {
                 title = _("Arrange quick settings buttons"),
                 item_table = items,
                 callback = function()
@@ -599,7 +667,9 @@ function QuickSettings:getMenuItem()
         local button_id = id
         table.insert(toggles, {
             text = _(button_names[button_id]),
-            checked_func = function() return cfg.show_buttons[button_id] == true end,
+            checked_func = function()
+                return cfg.show_buttons[button_id] == true
+            end,
             callback = function()
                 cfg.show_buttons[button_id] = not cfg.show_buttons[button_id]
                 self.settings:save()
@@ -609,12 +679,14 @@ function QuickSettings:getMenuItem()
     local function toggle(text, key, restart)
         return {
             text = _(text),
-            checked_func = function() return cfg[key] == true end,
+            checked_func = function()
+                return cfg[key] == true
+            end,
             callback = function()
                 cfg[key] = not cfg[key]
                 self.settings:save()
                 if restart then
-                    UIManager:askForRestart(_("Restart to apply the Quick Settings tab change"))
+                    UIManager:askForRestart(_("Restart to apply the quick settings tab change"))
                 end
             end,
         }
@@ -622,16 +694,13 @@ function QuickSettings:getMenuItem()
     return {
         text = _("Quick settings"),
         sub_item_table = {
-            toggle("Enable Quick Settings tab", "enabled", true),
-            {text = _("Buttons"), sub_item_table = toggles},
+            toggle("Enable quick settings tab", "enabled", true),
+            { text = _("Buttons"), sub_item_table = toggles },
             toggle("Show frontlight slider", "show_frontlight"),
             toggle("Show warmth slider", "show_warmth"),
             toggle("Always open on this tab", "open_on_start"),
         },
     }
-end
-
-function QuickSettings:reinit()
 end
 
 return QuickSettings

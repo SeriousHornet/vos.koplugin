@@ -2,7 +2,7 @@ local Blitbuffer = require("ffi/blitbuffer")
 local userpatch = require("userpatch")
 local _ = require("gettext")
 
-local BrowserHideUnderline = {name = "browser_hide_underline"}
+local BrowserHideUnderline = { name = "browser_hide_underline" }
 
 function BrowserHideUnderline:new(o)
     o = o or {}
@@ -48,9 +48,6 @@ function BrowserHideUnderline:getMenuItem()
             end
         end,
     }
-end
-
-function BrowserHideUnderline:reinit()
 end
 
 return BrowserHideUnderline

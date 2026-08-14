@@ -1,6 +1,7 @@
 local BD = require("ui/bidi")
 local Device = require("device")
 local FileManager = require("apps/filemanager/filemanager")
+local Font = require("ui/font")
 local InputDialog = require("ui/widget/inputdialog")
 local NetworkMgr = require("ui/network/manager")
 local SortWidget = require("ui/widget/sortwidget")
@@ -9,7 +10,7 @@ local datetime = require("datetime")
 local time = require("ui/time")
 local _ = require("gettext")
 
-local FileManagerTitleBar = {name = "filemanager_titlebar"}
+local FileManagerTitleBar = { name = "filemanager_titlebar" }
 
 local separators = {
     bar = "|",
@@ -58,7 +59,9 @@ local function getSystemStat(manager)
 end
 
 local item_text = {
-    custom_text = function(manager, cfg) return cfg.custom_text end,
+    custom_text = function(manager, cfg)
+        return cfg.custom_text
+    end,
     clock = function()
         return datetime.secondsToHour(os.time(), G_reader_settings:isTrue("twelve_hour_clock"))
     end,
@@ -135,17 +138,15 @@ local item_text = {
             local uptime = time.boottime_or_realtime_coarse() - system_stat.start_monotonic_time
             local suspend = Device:canSuspend() and Device.total_suspend_time or 0
             local standby = Device:canStandby() and Device.total_standby_time or 0
-            return "☀️" .. datetime.secondsToClockDuration(
-                "modern", time.to_s(uptime - suspend - standby), true, false, true
-            )
+            return "☀️"
+                .. datetime.secondsToClockDuration("modern", time.to_s(uptime - suspend - standby), true, false, true)
         end
     end,
     suspend_time = function(manager)
         local system_stat = getSystemStat(manager)
         if system_stat and Device:canSuspend() then
-            return "⏾" .. datetime.secondsToClockDuration(
-                "modern", time.to_s(Device.total_suspend_time), true, false, true
-            )
+            return "⏾"
+                .. datetime.secondsToClockDuration("modern", time.to_s(Device.total_suspend_time), true, false, true)
         end
     end,
 }
@@ -173,13 +174,19 @@ function FileManagerTitleBar:update(manager)
     end
     local spaces = string.rep(" ", cfg.separator_space)
     local separator = spaces .. (separators[cfg.separator] or cfg.separator_custom or "") .. spaces
-    manager.title_bar:setTitle(table.concat(values, separator))
     if manager._vos_titlebar_bold ~= cfg.bold then
         manager._vos_titlebar_bold = cfg.bold
-        manager.title_bar.title_face = cfg.bold and nil or manager.title_bar.info_text_face
+        local default_face = manager.title_bar.fullscreen and manager.title_bar.title_face_fullscreen
+            or manager.title_bar.title_face_not_fullscreen
+        if cfg.bold then
+            manager.title_bar.title_face = Font:getFace("smallinfofontbold", default_face.orig_size)
+        else
+            manager.title_bar.title_face = Font:getFace("x_smallinfofont", default_face.orig_size)
+        end
         manager.title_bar:clear()
         manager.title_bar:init()
     end
+    manager.title_bar:setTitle(table.concat(values, separator))
     if cfg.show.clock and cfg.auto_refresh_clock and not manager._suspended then
         UIManager:scheduleIn(61 - tonumber(os.date("%S")), manager.updateVOSTitleBar, manager)
     end
@@ -222,7 +229,9 @@ function FileManagerTitleBar:init()
     end
     wrapEvent("onPathChanged")
     wrapEvent("onSetRotationMode")
-    wrapEvent("onResume", function(manager) manager._suspended = false end)
+    wrapEvent("onResume", function(manager)
+        manager._suspended = false
+    end)
     wrapEvent("onSuspend", function(manager)
         manager._suspended = true
         UIManager:unschedule(manager.updateVOSTitleBar)
@@ -247,21 +256,28 @@ end
 
 function FileManagerTitleBar:textInput(title, value, callback)
     local dialog
-    dialog = InputDialog:new{
+    dialog = InputDialog:new {
         title = title,
         input = value,
-        buttons = {{
-            {text = _("Cancel"), callback = function() UIManager:close(dialog) end},
+        buttons = {
             {
-                text = _("Set"),
-                is_enter_default = true,
-                callback = function()
-                    callback(dialog:getInputText())
-                    UIManager:close(dialog)
-                    self:saveAndRefresh()
-                end,
+                {
+                    text = _("Cancel"),
+                    callback = function()
+                        UIManager:close(dialog)
+                    end,
+                },
+                {
+                    text = _("Set"),
+                    is_enter_default = true,
+                    callback = function()
+                        callback(dialog:getInputText())
+                        UIManager:close(dialog)
+                        self:saveAndRefresh()
+                    end,
+                },
             },
-        }},
+        },
     }
     UIManager:show(dialog)
     dialog:onShowKeyboard()
@@ -269,33 +285,37 @@ end
 
 function FileManagerTitleBar:getMenuItem()
     local cfg = self:cfg()
-    local item_toggles = {{
-        text = _("Arrange items"),
-        keep_menu_open = true,
-        callback = function()
-            local items = {}
-            for index = 1, #cfg.order do
-                local id = cfg.order[index]
-                table.insert(items, {text = _(item_names[id]), orig_item = id, dim = not cfg.show[id]})
-            end
-            UIManager:show(SortWidget:new{
-                title = _("Arrange title bar items"),
-                item_table = items,
-                callback = function()
-                    for index, item in ipairs(items) do
-                        cfg.order[index] = item.orig_item
-                    end
-                    self:saveAndRefresh()
-                end,
-            })
-        end,
-    }}
+    local item_toggles = {
+        {
+            text = _("Arrange items"),
+            keep_menu_open = true,
+            callback = function()
+                local items = {}
+                for index = 1, #cfg.order do
+                    local id = cfg.order[index]
+                    table.insert(items, { text = _(item_names[id]), orig_item = id, dim = not cfg.show[id] })
+                end
+                UIManager:show(SortWidget:new {
+                    title = _("Arrange title bar items"),
+                    item_table = items,
+                    callback = function()
+                        for index, item in ipairs(items) do
+                            cfg.order[index] = item.orig_item
+                        end
+                        self:saveAndRefresh()
+                    end,
+                })
+            end,
+        },
+    }
     for index = 1, #cfg.order do
         local id = cfg.order[index]
         local item_id = id
         table.insert(item_toggles, {
             text = _(item_names[item_id]),
-            checked_func = function() return cfg.show[item_id] == true end,
+            checked_func = function()
+                return cfg.show[item_id] == true
+            end,
             callback = function()
                 cfg.show[item_id] = not cfg.show[item_id]
                 self:saveAndRefresh()
@@ -303,13 +323,15 @@ function FileManagerTitleBar:getMenuItem()
         })
     end
     local separator_items = {}
-    local separator_order = {"dot", "bullet", "en_dash", "em_dash", "bar", "none"}
+    local separator_order = { "dot", "bullet", "en_dash", "em_dash", "bar", "none" }
     for index = 1, #separator_order do
         local id = separator_order[index]
         local separator_id = id
         table.insert(separator_items, {
             text = separators[separator_id] == "" and _("None") or separators[separator_id],
-            checked_func = function() return cfg.separator == separator_id end,
+            checked_func = function()
+                return cfg.separator == separator_id
+            end,
             callback = function()
                 cfg.separator = separator_id
                 self:saveAndRefresh()
@@ -319,7 +341,9 @@ function FileManagerTitleBar:getMenuItem()
     local function toggle(text, key)
         return {
             text = _(text),
-            checked_func = function() return cfg[key] == true end,
+            checked_func = function()
+                return cfg[key] == true
+            end,
             callback = function()
                 cfg[key] = not cfg[key]
                 self:saveAndRefresh()
@@ -327,19 +351,17 @@ function FileManagerTitleBar:getMenuItem()
         }
     end
     return {
-        text = _("File browser title bar"),
+        text = _("Title bar"),
         sub_item_table = {
             toggle("Enable title bar information", "enabled"),
-            {text = _("Items"), sub_item_table = item_toggles},
-            toggle("Show file browser path", "show_path"),
-            toggle("Auto refresh clock", "auto_refresh_clock"),
-            toggle("Show Wi-Fi when disabled", "wifi_show_disabled"),
-            toggle("Show frontlight when off", "frontlight_show_off"),
-            toggle("Bold font", "bold"),
+            { text = _("Items"), sub_item_table = item_toggles },
+            { text = _("Separator"), sub_item_table = separator_items },
             {
                 text = _("Custom text"),
                 callback = function()
-                    self:textInput(_("Enter custom text"), cfg.custom_text, function(value) cfg.custom_text = value end)
+                    self:textInput(_("Enter custom text"), cfg.custom_text, function(value)
+                        cfg.custom_text = value
+                    end)
                 end,
             },
             {
@@ -351,7 +373,11 @@ function FileManagerTitleBar:getMenuItem()
                     end)
                 end,
             },
-            {text = _("Separator"), sub_item_table = separator_items},
+            toggle("Show file browser path", "show_path"),
+            toggle("Auto refresh clock", "auto_refresh_clock"),
+            toggle("Show Wi-Fi when disabled", "wifi_show_disabled"),
+            toggle("Show frontlight when off", "frontlight_show_off"),
+            toggle("Bold font", "bold"),
         },
     }
 end

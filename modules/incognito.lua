@@ -4,7 +4,6 @@ local _ = require("gettext")
 local IncognitoModule = {
     name = "incognito",
     active = false,
-    file = nil,
 }
 
 function IncognitoModule:new(o)
@@ -92,12 +91,14 @@ function IncognitoModule:init()
         if not module or not module:isEnabled() or not is_file then
             return
         end
-        return {{
-            text = _("Open Incognito"),
-            callback = function()
-                module:open(file)
-            end,
-        }}
+        return {
+            {
+                text = _("Open incognito"),
+                callback = function()
+                    module:open(file)
+                end,
+            },
+        }
     end)
 end
 
@@ -162,7 +163,7 @@ end
 
 function IncognitoModule:getMenuItem()
     return {
-        text = _("Enable incognito open"),
+        text = _("Enable incognito opening"),
         checked_func = function()
             return self:isEnabled()
         end,
@@ -171,9 +172,6 @@ function IncognitoModule:getMenuItem()
             self.settings:save()
         end,
     }
-end
-
-function IncognitoModule:reinit()
 end
 
 return IncognitoModule

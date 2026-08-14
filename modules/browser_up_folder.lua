@@ -2,7 +2,7 @@ local BD = require("ui/bidi")
 local FileChooser = require("ui/widget/filechooser")
 local _ = require("gettext")
 
-local BrowserUpFolder = {name = "browser_up_folder"}
+local BrowserUpFolder = { name = "browser_up_folder" }
 
 function BrowserUpFolder:new(o)
     o = o or {}
@@ -76,8 +76,7 @@ function BrowserUpFolder:init()
             return
         end
 
-        self._vos_home_callback = self._vos_home_callback
-            or (self.title_bar and self.title_bar.left_icon_tap_callback)
+        self._vos_home_callback = self._vos_home_callback or (self.title_bar and self.title_bar.left_icon_tap_callback)
         if cfg.hide_up_folder and is_sub_folder then
             local icon = BD.mirroredUILayout() and "back.top.rtl" or "back.top"
             changeLeftIcon(self, icon, function()
@@ -122,9 +121,6 @@ function BrowserUpFolder:getMenuItem()
             },
         },
     }
-end
-
-function BrowserUpFolder:reinit()
 end
 
 return BrowserUpFolder

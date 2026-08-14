@@ -1,7 +1,7 @@
 local Menu = require("ui/widget/menu")
 local _ = require("gettext")
 
-local MenuTextOverrides = {name = "menu_text_overrides"}
+local MenuTextOverrides = { name = "menu_text_overrides" }
 
 function MenuTextOverrides:new(o)
     o = o or {}
@@ -12,6 +12,21 @@ end
 
 function MenuTextOverrides:cfg()
     return self.settings.settings.extras.menu_text
+end
+
+function MenuTextOverrides.cleanText(text, cfg)
+    if cfg.replace_underscores then
+        text = text:gsub("_", " ")
+    end
+    if cfg.restore_articles then
+        local slash = text:sub(-1) == "/" and "/" or ""
+        local base = slash ~= "" and text:sub(1, -2) or text
+        local stem, article = base:match("^(.-),%s+(%a+)$")
+        if stem and (article == "The" or article == "An" or article == "A") then
+            text = article .. " " .. stem .. slash
+        end
+    end
+    return text
 end
 
 function MenuTextOverrides:init()
@@ -27,19 +42,7 @@ function MenuTextOverrides:init()
         if not text or not module then
             return text
         end
-        local cfg = module:cfg()
-        if cfg.replace_underscores then
-            text = text:gsub("_", " ")
-        end
-        if cfg.restore_articles then
-            local slash = text:sub(-1) == "/" and "/" or ""
-            local base = slash ~= "" and text:sub(1, -2) or text
-            local stem, article = base:match("^(.-),%s+(The|An|A)$")
-            if stem and article then
-                text = article .. " " .. stem .. slash
-            end
-        end
-        return text
+        return MenuTextOverrides.cleanText(text, module:cfg())
     end
 end
 
@@ -75,9 +78,6 @@ function MenuTextOverrides:getMenuItem()
             },
         },
     }
-end
-
-function MenuTextOverrides:reinit()
 end
 
 return MenuTextOverrides

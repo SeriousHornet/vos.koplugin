@@ -9,9 +9,7 @@ local lfs = require("libs/libkoreader-lfs")
 -- This file lives at <plugin_root>/modules/, so walk up one level to find
 -- the plugin's own resources/ directory.
 local MODULE_DIR = debug.getinfo(1, "S").source:match("^@(.+[/\\])[^/\\]+$") or "./"
-local VOS_RESOURCE_DIR =
-    (MODULE_DIR:match("^(.*)[/\\]modules[/\\]$") or MODULE_DIR:sub(1, -2)) ..
-    "/resources/"
+local VOS_RESOURCE_DIR = (MODULE_DIR:match("^(.*)[/\\]modules[/\\]$") or MODULE_DIR:sub(1, -2)) .. "/resources/"
 local icon_files = {}
 
 -- Return the absolute path of <name>.svg inside resources/ if it exists,
@@ -40,7 +38,7 @@ end
 -- layer at render time (see ImageWidget: flattening of icons). Callers
 -- may merge extra options (width, height, rotation_angle, ...) via `extra`.
 local function icon(name, extra)
-    local o = {icon = name, file = iconFile(name), alpha = true}
+    local o = { icon = name, file = iconFile(name), alpha = true }
     if extra then
         for k, v in pairs(extra) do
             o[k] = v
