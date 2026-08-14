@@ -1,6 +1,5 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local userpatch = require("userpatch")
-local _ = require("gettext")
 
 local BrowserHideUnderline = { name = "browser_hide_underline" }
 
@@ -36,22 +35,6 @@ function BrowserHideUnderline:init()
         end
         return result == nil and true or result
     end
-end
-
-function BrowserHideUnderline:getMenuItem()
-    return {
-        text = _("Hide last visited underline"),
-        checked_func = function()
-            return self:isConfigured()
-        end,
-        callback = function()
-            self.settings.settings.extras.hide_last_visited_underline = not self:isConfigured()
-            self.settings:save()
-            if self.plugin then
-                self.plugin:refresh()
-            end
-        end,
-    }
 end
 
 return BrowserHideUnderline

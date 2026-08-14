@@ -140,6 +140,19 @@ function BrowserUpFolder:getMenuItem()
                     end
                 end,
             },
+            {
+                text = _("Hide last visited underline"),
+                checked_func = function()
+                    return self:cfg().hide_last_visited_underline == true
+                end,
+                callback = function()
+                    self:cfg().hide_last_visited_underline = not self:cfg().hide_last_visited_underline
+                    self.settings:save()
+                    if self.plugin then
+                        self.plugin:refresh()
+                    end
+                end,
+            },
         },
     }
 end

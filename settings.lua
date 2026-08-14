@@ -1,4 +1,5 @@
 local DataStorage = require("datastorage")
+local Font = require("ui/font")
 local UIManager = require("ui/uimanager")
 local InputDialog = require("ui/widget/inputdialog")
 local PathChooser = require("ui/widget/pathchooser")
@@ -6,6 +7,7 @@ local SortWidget = require("ui/widget/sortwidget")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local Screen = require("device").screen
+local VERSION = require("vos_version")
 local _ = require("gettext")
 local T = require("ffi/util").template
 
@@ -38,10 +40,10 @@ local function groupFeatureMenuItems(items)
     return grouped
 end
 
-local function groupFeatureMenuItemsWithTrailingAction(items)
-    local trailing_action = table.remove(items)
+local function groupFeatureMenuItemsWithTrailingItem(items)
+    local trailing_item = table.remove(items)
     local grouped = groupFeatureMenuItems(items)
-    table.insert(grouped, trailing_action)
+    table.insert(grouped, trailing_item)
     return grouped
 end
 
@@ -593,7 +595,7 @@ end
 function SettingsManager:getMainMenu(plugin)
     local self_ref = self
 
-    return groupFeatureMenuItems {
+    return groupFeatureMenuItemsWithTrailingItem {
         {
             text_func = function()
                 if self_ref:isMasterEnabled() then
@@ -645,29 +647,6 @@ function SettingsManager:getMainMenu(plugin)
             end,
         },
         {
-            text = _("Reset to defaults"),
-            callback = function(touchmenu_instance)
-                UIManager:show(ConfirmBox:new {
-                    text = _("Reset all Visual Overhaul settings to defaults?"),
-                    ok_text = _("Reset"),
-                    ok_callback = function()
-                        self_ref:loadDefaults()
-                        self_ref:save()
-                        if touchmenu_instance then
-                            touchmenu_instance:updateItems()
-                        end
-                        UIManager:show(InfoMessage:new {
-                            text = _("Settings reset to defaults"),
-                            timeout = 2,
-                        })
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                })
-            end,
-        },
-        {
             text = _("Refresh UI"),
             help_text = _("Apply changes without restarting KOReader"),
             separator = true,
@@ -707,21 +686,65 @@ function SettingsManager:getMainMenu(plugin)
         },
         {
             text = _("About"),
-            callback = function()
-                UIManager:show(InfoMessage:new {
-                    text = _(
-                        "Visual Overhaul Suite (VOS)\n\n"
-                            .. "A comprehensive visual customization suite for KOReader.\n\n"
-                            .. "Features:\n"
-                            .. "  - Custom navigation bar with flexible tab arrangement\n"
-                            .. "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n"
-                            .. "  - Badges: progress bar, percentage, pages, status icons\n"
-                            .. "  - Clean up: hide pagination and the description hint bar\n\n"
-                            .. "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n"
-                            .. "Use 'Reset to defaults' to restore the factory configuration."
-                    ),
-                })
-            end,
+            sub_item_table = {
+                {
+                    text = _("Reset to Defaults"),
+                    callback = function(touchmenu_instance)
+                        UIManager:show(ConfirmBox:new {
+                            text = _("Reset all Visual Overhaul settings to defaults?"),
+                            ok_text = _("Reset"),
+                            ok_callback = function()
+                                self_ref:loadDefaults()
+                                self_ref:save()
+                                if touchmenu_instance then
+                                    touchmenu_instance:updateItems()
+                                end
+                                UIManager:show(InfoMessage:new {
+                                    text = _("Settings reset to defaults"),
+                                    timeout = 2,
+                                })
+                                if plugin then
+                                    plugin:refresh()
+                                end
+                            end,
+                        })
+                    end,
+                },
+                {
+                    text = T(_("Version: %1"), VERSION),
+                    callback = function()
+                        UIManager:show(InfoMessage:new {
+                            text = T(_("Visual Overhaul Suite (VOS)\nVersion %1"), VERSION),
+                        })
+                    end,
+                },
+                {
+                    text = _("Check for Updates"),
+                    callback = function()
+                        require("updater").check(VERSION)
+                    end,
+                },
+                {
+                    text = _("About VOS"),
+                    callback = function()
+                        UIManager:show(InfoMessage:new {
+                            face = Font:getFace("x_smallinfofont"),
+                            text = _(
+                                "Visual Overhaul Suite (VOS)\n\n"
+                                    .. "A comprehensive visual customization suite for KOReader.\n\n"
+                                    .. "Features:\n"
+                                    .. "  - Custom navigation bar with flexible tab arrangement\n"
+                                    .. "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n"
+                                    .. "  - Badges: progress bar, percentage, pages, status icons\n"
+                                    .. "  - Clean up: hide pagination and the description hint bar\n"
+									.. "  - Extras: commonly used community patches\n\n"
+                                    .. "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n\n"
+                                    .. "Use 'Reset to Defaults' to restore the factory configuration."
+                            ),
+                        })
+                    end,
+                },
+            },
         },
     }
 end
@@ -732,7 +755,7 @@ function SettingsManager:getCleanupMenu(plugin)
     return {
         checkboxItem(self, cb, "disable_description_hint", "Disable description hint bar", plugin),
         {
-            text = _("Hide pagination"),
+            text = _("Disable pagination"),
             checked_func = function()
                 return self_ref:isEnabled("hide_pagination")
             end,
@@ -743,12 +766,12 @@ function SettingsManager:getCleanupMenu(plugin)
                 end
             end,
         },
-        checkboxItem(self, cb.progress_bar, "hide_native", "Hide default progress bar", plugin),
+        checkboxItem(self, cb.progress_bar, "hide_native", "Disable default progress bar", plugin),
         checkboxItem(
             self,
             self.settings.enabled_modules,
             "hide_collection_star",
-            "Hide default collection star",
+            "Disable default collection star",
             plugin
         ),
     }
@@ -1113,7 +1136,7 @@ function SettingsManager:getNavbarMenu(plugin)
         { name = "Teal", color = { 0x00, 0x97, 0xA7 } },
     }
 
-    return groupFeatureMenuItemsWithTrailingAction {
+    return groupFeatureMenuItemsWithTrailingItem {
         {
             text = _("Enable navigation bar"),
             checked_func = function()
