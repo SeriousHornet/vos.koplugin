@@ -442,6 +442,7 @@ function SettingsManager:loadDefaults()
         coverbrowser = {
             rounded_corners = {
                 enabled = true,
+                size = 40,
             },
             cover_aspect_ratio = {
                 ratio_w = 2,
@@ -746,6 +747,7 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
             text = _("Rounded corners"),
             sub_item_table = {
                 checkboxItem(self, cb.rounded_corners, "enabled", "Enable rounded corners", plugin),
+                numberItem(self, cb.rounded_corners, "size", "Corner size", plugin, { min = 8, max = 100 }),
             },
         },
         {

@@ -160,21 +160,43 @@ function ColorTextWidget:paintTo(bb, x, y)
     tmp_bb:free()
 end
 
--- Shared corner widgets are loaded once and reused by covers and folders.
+local rounded_corner_cache = {}
 
-local function svgCornerWidget(icon)
-    return IconWidget:new { icon = icon, file = vosicons.iconFile(icon), alpha = true }
+local function getRoundedCornerIcons(size)
+    if rounded_corner_cache[size] then
+        return rounded_corner_cache[size]
+    end
+    local icons = {}
+    for __, corner in ipairs { "tl", "tr", "bl", "br" } do
+        local name = "rounded.corner." .. corner
+        icons[corner] = IconWidget:new {
+            icon = name,
+            file = vosicons.iconFile(name),
+            width = size,
+            height = size,
+            alpha = true,
+        }
+    end
+    rounded_corner_cache[size] = icons
+    return icons
 end
 
-local ROUND_CORNER_ICONS = {
-    tl = svgCornerWidget("rounded.corner.tl"),
-    tr = svgCornerWidget("rounded.corner.tr"),
-    bl = svgCornerWidget("rounded.corner.bl"),
-    br = svgCornerWidget("rounded.corner.br"),
-}
+local function clearRoundedCornerCache()
+    for size, icons in pairs(rounded_corner_cache) do
+        for __, icon in pairs(icons) do
+            icon:free()
+        end
+        rounded_corner_cache[size] = nil
+    end
+end
 
-local function paintRoundedCorners(bb, target, x, y, self_widget)
-    local TL, TR, BL, BR = ROUND_CORNER_ICONS.tl, ROUND_CORNER_ICONS.tr, ROUND_CORNER_ICONS.bl, ROUND_CORNER_ICONS.br
+local function paintRoundedCorners(bb, target, x, y, self_widget, c)
+    local corner_size = math.max(
+        1,
+        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), target.dimen.w, target.dimen.h))
+    )
+    local icons = getRoundedCornerIcons(corner_size)
+    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
         return
     end
@@ -981,7 +1003,12 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     local cover_border = Screen:scaleBySize(c.folder_covers.folder_border)
     bb:paintBorder(image_x, image_y, image_size.w, image_size.h, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
 
-    local TL, TR, BL, BR = ROUND_CORNER_ICONS.tl, ROUND_CORNER_ICONS.tr, ROUND_CORNER_ICONS.bl, ROUND_CORNER_ICONS.br
+    local corner_size = math.max(
+        1,
+        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), image_size.w, image_size.h))
+    )
+    local icons = getRoundedCornerIcons(corner_size)
+    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
         return
     end
@@ -1436,7 +1463,7 @@ local function patchMosaicMenuItem()
         end
 
         if c.rounded_corners.enabled then
-            paintRoundedCorners(bb, target, x, y, self)
+            paintRoundedCorners(bb, target, x, y, self, c)
         end
 
         if c.series_indicator.style == "badge" and self.has_series_badge and self.series_badge then
@@ -1514,6 +1541,7 @@ end
 -- Hooks are process-wide and installed idempotently. Reinitialization clears
 -- plugin caches and updates retained pagination state before the UI rebuild.
 function CoverBrowserModule:reinit()
+    clearRoundedCornerCache()
     clearPercentBadgeCache()
     local FileManager = require("apps/filemanager/filemanager")
     local fm = FileManager.instance
