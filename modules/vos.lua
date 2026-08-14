@@ -588,7 +588,7 @@ local function installIconAlphaOverride()
     end
 end
 
-local function paintStatusIconsOverlay(bb, x, y, self_widget)
+local function paintStatusIconsOverlay(bb, x, y, self_widget, c)
     local shows = self_widget.status == "complete"
         or self_widget.status == "abandoned"
         or (self_widget.do_hint_opened and self_widget.been_opened)
@@ -605,7 +605,7 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
         return
     end
 
-    local corner_mark_size = math.floor(math.min(self_widget.width, self_widget.height) / 8)
+    local corner_mark_size = Screen:scaleBySize(c.status_icons.size)
     local ix, iy
     if BD.mirroredUILayout() then
         ix = math.floor((self_widget.width - target.dimen.w) / 2)
@@ -1465,7 +1465,7 @@ local function patchMosaicMenuItem()
         end
 
         if c.status_icons.enabled then
-            paintStatusIconsOverlay(bb, x, y, self)
+            paintStatusIconsOverlay(bb, x, y, self, c)
         end
 
         if star_enabled then

@@ -509,6 +509,7 @@ function SettingsManager:loadDefaults()
             },
             status_icons = {
                 enabled = true,
+                size = 24,
             },
             disable_description_hint = true,
             folder_covers = {
@@ -817,7 +818,7 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
                     "folder_font_size",
                     "Folder font size",
                     plugin,
-                    { min = 6, max = 60 }
+                    { min = 6, max = 40 }
                 ),
                 numberItem(self, cb.folder_covers, "folder_border", "Folder border", plugin, { min = 0, max = 10 }),
             },
@@ -945,12 +946,12 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom left", value = "bottom_left" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 2 }),
+                numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 5 }),
                 numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, { min = 20, max = 200 }),
                 numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, { min = 20, max = 200 }),
-                numberItem(self, cb.percent_badge, "bump_up", "Bump up", plugin, { min = 0, max = 10 }),
+                numberItem(self, cb.percent_badge, "bump_up", "Move % text up", plugin, { min = 0, max = 20 }),
             },
         },
         {
@@ -963,7 +964,7 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom left", value = "bottom_left" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 0.1, max = 2 }),
+                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 0.1, max = 5 }),
                 numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, { min = 0, max = 10 }),
                 numberItem(
                     self,
@@ -1024,6 +1025,7 @@ function SettingsManager:getBadgesMenu(plugin)
             text = _("Status icons"),
             sub_item_table = {
                 checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin),
+                numberItem(self, cb.status_icons, "size", "Size", plugin, { min = 8, max = 100 }),
             },
         },
         {
