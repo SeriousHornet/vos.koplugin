@@ -30,7 +30,6 @@ local _ = require("gettext")
 
 local SETTINGS_MANAGER = nil
 local MAX_IMG_W, MAX_IMG_H -- book-cover max cell size, set in init()
-local FOLDER_ADJ_W, FOLDER_ADJ_H -- folder-cover adjusted size, set in init()
 
 local function getCfg()
     return SETTINGS_MANAGER.settings.coverbrowser
@@ -748,12 +747,8 @@ local function isCoverFile(path)
 end
 
 local function getFolderAspectDimensions(width, height, border_size, c)
-    if FOLDER_ADJ_W and FOLDER_ADJ_H then
-        return { w = FOLDER_ADJ_W + 2 * border_size, h = FOLDER_ADJ_H + 2 * border_size }
-    end
-    -- Fallback if init() hasn't run yet for this item.
-    local available_w = width - 2 * border_size
-    local available_h = height - 2 * border_size
+    local available_w = width - 2 * Size.border.thin
+    local available_h = height - 2 * Size.border.thin
     local rcfg = c.cover_aspect_ratio
     local ratio = rcfg.fill and (available_w / available_h) or (rcfg.ratio_w / rcfg.ratio_h)
     local frame_w, frame_h
@@ -1334,29 +1329,17 @@ local function patchMosaicMenuItem()
     end
 
     MosaicMenuItem.init = preserveUpvalues(TRUE_ORIG_INIT, function(self)
-        TRUE_ORIG_INIT(self)
-        if not masterEnabled() then
-            return
-        end
-        local c = getCfg()
-
-        if self.width and self.height then
+        local enabled = masterEnabled()
+        if enabled and self.width and self.height then
             local border_size = Size.border.thin
             MAX_IMG_W = self.width - 2 * border_size
             MAX_IMG_H = self.height - 2 * border_size
-
-            if c.folder_covers.enabled then
-                local rcfg = c.cover_aspect_ratio
-                local ratio = rcfg.fill and (MAX_IMG_W / MAX_IMG_H) or (rcfg.ratio_w / rcfg.ratio_h)
-                if MAX_IMG_W / MAX_IMG_H > ratio then
-                    FOLDER_ADJ_H = MAX_IMG_H
-                    FOLDER_ADJ_W = math.floor(MAX_IMG_H * ratio)
-                else
-                    FOLDER_ADJ_W = MAX_IMG_W
-                    FOLDER_ADJ_H = math.floor(MAX_IMG_W / ratio)
-                end
-            end
         end
+        TRUE_ORIG_INIT(self)
+        if not enabled then
+            return
+        end
+        local c = getCfg()
 
         if self.is_directory or self.file_deleted then
             return
