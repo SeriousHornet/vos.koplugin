@@ -938,20 +938,23 @@ injectNavbar = function(fm)
     if not navbarEnabled() then
         return
     end
+    -- SimpleUI owns and deeply wraps the FileManager layout with its own
+    -- top/bottom navigation containers. Replacing that tree would discard
+    -- SimpleUI's layout, so let it remain the sole navbar provider.
+    if fm._navbar_container then
+        return
+    end
     local fm_ui = fm[1]
     if not fm_ui then
         return
     end
 
-    local file_chooser
+    local file_chooser = fm.file_chooser
     if fm._navbar_injected then
-        file_chooser = fm_ui[1] and fm_ui[1][1]
         local old_navbar = fm_ui[1] and fm_ui[1][2]
         if old_navbar then
             old_navbar:free(true)
         end
-    else
-        file_chooser = fm_ui[1]
     end
     if not file_chooser then
         return
@@ -967,7 +970,7 @@ injectNavbar = function(fm)
 
     local navbar_h = navbar:getSize().h
     local new_height = Screen:getHeight() - navbar_h
-    if file_chooser.height ~= new_height then
+    if file_chooser.height ~= new_height and file_chooser.dimen and file_chooser.inner_dimen then
         local chrome = file_chooser.dimen.h - file_chooser.inner_dimen.h
         file_chooser.height = new_height
         file_chooser.dimen.h = new_height
