@@ -1,24 +1,10 @@
---[[--
-Navbar Module - Core navigation bar functionality
-Full port of the 2-navbar-vos.lua patch, driven by the plugin's SettingsManager
-instead of a standalone G_reader_settings blob.
-
-Design notes (why some state is module-level, not self.*):
-The raw patch was a single file loaded once by KOReader, so its `config`,
-`active_tab`, and hook-installed flags were naturally process-wide singletons.
-This module wraps the same logic in a class so main.lua can call :init()/:reinit(),
-but :init() may legitimately run more than once (plugin re-instantiation across
-FileManager/ReaderUI contexts). Anything that must only ever be installed ONCE
-(the Menu.init hook, FileManager.onPathChanged hook, setupLayout hook, standalone
-view hooks, the QuickRSS hook) is guarded by a module-level flag rather than an
-instance field, and the active tab / cached layout constants are module-level
-upvalues so every FileManager instance agrees on the same navbar state - exactly
-how the original patch behaved.
---]] --
+-- Hooks and active navigation state are process-wide so recreated FileManager
+-- instances share one navbar configuration.
 
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
+local DataStorage = require("datastorage")
 local Device = require("device")
 local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
@@ -42,32 +28,42 @@ local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
-local logger = require("logger")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 
--- ===========================================================================
--- Module-level (singleton) state - shared across every NavbarModule instance
--- ===========================================================================
+local function customIconFile(name)
+    if not name or name == "" then
+        return
+    end
+    local base = DataStorage:getDataDir() .. "/icons/" .. name
+    if name:match("%.svg$") or name:match("%.png$") then
+        return lfs.attributes(base, "mode") == "file" and base or nil
+    end
+    for _, extension in ipairs { ".svg", ".png" } do
+        local path = base .. extension
+        if lfs.attributes(path, "mode") == "file" then
+            return path
+        end
+    end
+end
 
--- Set on the first :init() call; every hook below reads config through this
--- rather than taking a settings reference in a closure, so a later reinit()
--- with a fresh SettingsManager (there shouldn't be one, but just in case)
--- still sees live data.
+-- Global hooks always read the latest settings manager.
 local SETTINGS_MANAGER = nil
 local function cfg()
     return SETTINGS_MANAGER.settings.navbar
 end
 
 local function navbarEnabled()
-    return SETTINGS_MANAGER ~= nil and SETTINGS_MANAGER:isEnabled("navbar")
+    return SETTINGS_MANAGER ~= nil
+        and SETTINGS_MANAGER:isMasterEnabled()
+        and SETTINGS_MANAGER:isEnabled("navbar")
 end
 
 local active_tab = "books"
 local GLOBAL_PATCHED = false
 local qrss_hooked = false
+local standalone_views = setmetatable({}, { __mode = "k" })
 
--- Cached layout constants, recomputed by updateLayoutConstants()
 local navbar_icon_size
 local navbar_font
 local navbar_font_bold
@@ -78,24 +74,24 @@ local underline_thickness = Screen:scaleBySize(2)
 local corner_dead_zone = math.floor(Screen:getWidth() / 12)
 
 local size_presets = {
-    tiny = {icon = 16, font = "xx_smallinfofont", bold_font = "smallinfofontbold", padding = 2, font_size = 12},
-    small = {icon = 22, font = "xx_smallinfofont", bold_font = "x_smallinfofont", padding = 3, font_size = 14},
-    medium = {icon = 30, font = "x_smallinfofont", bold_font = "smallinfofontbold", padding = 4, font_size = 18},
-    large = {icon = 40, font = "smallinfofont", bold_font = "smallinfofontbold", padding = 6, font_size = 22},
-    huge = {icon = 50, font = "infofont", bold_font = "tfont", padding = 8, font_size = 26}
+    tiny = { icon = 16, font = "xx_smallinfofont", bold_font = "smallinfofontbold", padding = 2, font_size = 12 },
+    small = { icon = 22, font = "xx_smallinfofont", bold_font = "x_smallinfofont", padding = 3, font_size = 14 },
+    medium = { icon = 30, font = "x_smallinfofont", bold_font = "smallinfofontbold", padding = 4, font_size = 18 },
+    large = { icon = 40, font = "smallinfofont", bold_font = "smallinfofontbold", padding = 6, font_size = 22 },
+    huge = { icon = 50, font = "infofont", bold_font = "tfont", padding = 8, font_size = 26 },
 }
 
 local kaleido_colors = {
-    {name = "Ocean Blue", color = {0x1E, 0x88, 0xE5}},
-    {name = "Forest Green", color = {0x43, 0xA0, 0x47}},
-    {name = "Sunset Orange", color = {0xFF, 0x6F, 0x00}},
-    {name = "Royal Purple", color = {0x7B, 0x1F, 0xA2}},
-    {name = "Coral Pink", color = {0xFF, 0x70, 0x43}},
-    {name = "Mint Green", color = {0x00, 0x89, 0x7B}},
-    {name = "Gold", color = {0xFF, 0xA7, 0x26}},
-    {name = "Ruby Red", color = {0xE5, 0x39, 0x35}},
-    {name = "Slate Blue", color = {0x5C, 0x6B, 0xC0}},
-    {name = "Teal", color = {0x00, 0x97, 0xA7}}
+    { name = "Ocean Blue", color = { 0x1E, 0x88, 0xE5 } },
+    { name = "Forest Green", color = { 0x43, 0xA0, 0x47 } },
+    { name = "Sunset Orange", color = { 0xFF, 0x6F, 0x00 } },
+    { name = "Royal Purple", color = { 0x7B, 0x1F, 0xA2 } },
+    { name = "Coral Pink", color = { 0xFF, 0x70, 0x43 } },
+    { name = "Mint Green", color = { 0x00, 0x89, 0x7B } },
+    { name = "Gold", color = { 0xFF, 0xA7, 0x26 } },
+    { name = "Ruby Red", color = { 0xE5, 0x39, 0x35 } },
+    { name = "Slate Blue", color = { 0x5C, 0x6B, 0xC0 } },
+    { name = "Teal", color = { 0x00, 0x97, 0xA7 } },
 }
 
 local function updateLayoutConstants()
@@ -109,15 +105,13 @@ local function updateLayoutConstants()
     navbar_v_padding = Screen:scaleBySize(size_preset.padding)
 
     if c.active_color_index == 0 then
-        c.active_tab_color = {0x33, 0x99, 0xFF}
+        c.active_tab_color = { 0x33, 0x99, 0xFF }
     elseif kaleido_colors[c.active_color_index] then
         c.active_tab_color = kaleido_colors[c.active_color_index].color
     end
 end
 
--- ===========================================================================
 -- Tab definitions
--- ===========================================================================
 
 local function getBooksLabel()
     local c = cfg()
@@ -125,23 +119,23 @@ local function getBooksLabel()
 end
 
 local tabs = {
-    {id = "books", label = "Books", icon = "tab_books"},
-    {id = "manga", label = _("Manga"), icon = "tab_manga"},
-    {id = "news", label = _("News"), icon = "tab_news"},
-    {id = "continue", label = _("Continue"), icon = "tab_continue"},
-    {id = "history", label = _("History"), icon = "tab_history"},
-    {id = "favorites", label = _("Favorites"), icon = "tab_favorites"},
-    {id = "collections", label = _("Collections"), icon = "tab_collections"},
-    {id = "zlib", label = _("Z-Lib"), icon = "appbar.search"},
-    {id = "annas", label = _("Anna's"), icon = "appbar.search"},
-    {id = "appstore", label = _("AppStore"), icon = "tab_collections"},
-    {id = "opds", label = _("OPDS"), icon = "appbar.filebrowser"},
-    {id = "exit", label = _("Exit"), icon = "tab_exit"},
-    {id = "page_left", label = _("Prev"), icon = "tab_left"},
-    {id = "page_right", label = _("Next"), icon = "tab_right"},
-    {id = "sleep", label = _("Sleep"), icon = "tab_sleep"},
-    {id = "restart", label = _("Restart"), icon = "tab_restart"},
-    {id = "stats", label = _("Stats"), icon = "tab_stats"}
+    { id = "books", label = "Books", icon = "tab_books" },
+    { id = "manga", label = _("Manga"), icon = "tab_manga" },
+    { id = "news", label = _("News"), icon = "tab_news" },
+    { id = "continue", label = _("Continue"), icon = "tab_continue" },
+    { id = "history", label = _("History"), icon = "tab_history" },
+    { id = "favorites", label = _("Favorites"), icon = "tab_favorites" },
+    { id = "collections", label = _("Collections"), icon = "tab_collections" },
+    { id = "zlib", label = _("Z-Lib"), icon = "appbar.search" },
+    { id = "annas", label = _("Anna's"), icon = "appbar.search" },
+    { id = "appstore", label = _("AppStore"), icon = "tab_collections" },
+    { id = "opds", label = _("OPDS"), icon = "appbar.filebrowser" },
+    { id = "exit", label = _("Exit"), icon = "tab_exit" },
+    { id = "page_left", label = _("Prev"), icon = "tab_left" },
+    { id = "page_right", label = _("Next"), icon = "tab_right" },
+    { id = "sleep", label = _("Sleep"), icon = "tab_sleep" },
+    { id = "restart", label = _("Restart"), icon = "tab_restart" },
+    { id = "stats", label = _("Stats"), icon = "tab_stats" },
 }
 
 local tabs_by_id = {}
@@ -169,7 +163,7 @@ local function registerCustomTabs()
     local c = cfg()
     for _, ct in ipairs(c.custom_tabs) do
         if ct.id and ct.label then
-            local entry = {id = ct.id, label = ct.label, icon = ct.icon or "appbar.search", is_custom = true}
+            local entry = { id = ct.id, label = ct.label, icon = ct.icon or "appbar.search", is_custom = true }
             table.insert(tabs, entry)
             tabs_by_id[ct.id] = entry
             if c.show_tabs[ct.id] == nil then
@@ -194,26 +188,30 @@ local createNavBar
 local getTabCallback
 
 local function setActiveTab(tab_id)
+    if not navbarEnabled() then
+        return
+    end
+    if active_tab == tab_id then
+        return
+    end
     active_tab = tab_id
     updateLayoutConstants()
     local fm = FileManager.instance
     if fm then
         injectNavbar(fm)
-        UIManager:setDirty(fm, "full")
+        UIManager:setDirty(fm, "ui")
     end
 end
 
--- ===========================================================================
 -- Tab callbacks
--- ===========================================================================
 
 local function onTabBooks()
     local fm = FileManager.instance
     if not fm then
         return
     end
-    local home_dir =
-        G_reader_settings:readSetting("home_dir") or require("apps/filemanager/filemanagerutil").getDefaultDir()
+    local home_dir = G_reader_settings:readSetting("home_dir")
+        or require("apps/filemanager/filemanagerutil").getDefaultDir()
     fm.file_chooser.path_items[home_dir] = nil
     fm.file_chooser:changeToPath(home_dir)
 end
@@ -229,7 +227,7 @@ local function onTabManga()
         if lfs.attributes(c.manga_folder, "mode") == "directory" then
             fm.file_chooser:changeToPath(c.manga_folder)
         else
-            UIManager:show(InfoMessage:new {text = _("Manga folder not found: ") .. c.manga_folder})
+            UIManager:show(InfoMessage:new { text = _("Manga folder not found: ") .. c.manga_folder })
         end
         return
     end
@@ -238,7 +236,7 @@ local function onTabManga()
     if rakuyomi then
         rakuyomi:openLibraryView()
     else
-        UIManager:show(InfoMessage:new {text = _("Rakuyomi plugin is not installed.")})
+        UIManager:show(InfoMessage:new { text = _("Rakuyomi plugin is not installed.") })
     end
 end
 
@@ -253,7 +251,7 @@ local function onTabNews()
         if lfs.attributes(c.news_folder, "mode") == "directory" then
             fm.file_chooser:changeToPath(c.news_folder)
         else
-            UIManager:show(InfoMessage:new {text = _("News folder not found: ") .. c.news_folder})
+            UIManager:show(InfoMessage:new { text = _("News folder not found: ") .. c.news_folder })
         end
         return
     end
@@ -263,14 +261,14 @@ local function onTabNews()
     if ok and QuickRSSUI then
         UIManager:show(QuickRSSUI:new {})
     else
-        UIManager:show(InfoMessage:new {text = _("QuickRSS plugin is not installed.")})
+        UIManager:show(InfoMessage:new { text = _("QuickRSS plugin is not installed.") })
     end
 end
 
 local function onTabContinue()
     local last_file = G_reader_settings:readSetting("lastfile")
     if not last_file or lfs.attributes(last_file, "mode") ~= "file" then
-        UIManager:show(InfoMessage:new {text = _("Cannot open last document")})
+        UIManager:show(InfoMessage:new { text = _("Cannot open last document") })
         return
     end
     local ReaderUI = require("apps/reader/readerui")
@@ -300,18 +298,16 @@ end
 
 local function onTabExit()
     local fm = FileManager.instance
-    UIManager:show(
-        ConfirmBox:new {
-            text = _("Exit KOReader?"),
-            ok_text = _("Exit"),
-            cancel_text = _("Cancel"),
-            ok_callback = function()
-                if fm then
-                    fm:onClose()
-                end
+    UIManager:show(ConfirmBox:new {
+        text = _("Exit KOReader?"),
+        ok_text = _("Exit"),
+        cancel_text = _("Cancel"),
+        ok_callback = function()
+            if fm then
+                fm:onClose()
             end
-        }
-    )
+        end,
+    })
 end
 
 local function onTabPageLeft()
@@ -329,37 +325,30 @@ local function onTabPageRight()
 end
 
 local function onTabSleep()
-    UIManager:show(
-        ConfirmBox:new {
-            text = _("Put device to sleep?"),
-            ok_text = _("Sleep"),
-            ok_callback = function()
-                if Device:canSuspend() then
-                    UIManager:broadcastEvent(Event:new("RequestSuspend"))
-                elseif Device:canPowerOff() then
-                    UIManager:broadcastEvent(Event:new("RequestPowerOff"))
-                end
+    UIManager:show(ConfirmBox:new {
+        text = _("Put device to sleep?"),
+        ok_text = _("Sleep"),
+        ok_callback = function()
+            if Device:canSuspend() then
+                UIManager:broadcastEvent(Event:new("RequestSuspend"))
+            elseif Device:canPowerOff() then
+                UIManager:broadcastEvent(Event:new("RequestPowerOff"))
             end
-        }
-    )
+        end,
+    })
 end
 
 local function onTabRestart()
-    UIManager:show(
-        ConfirmBox:new {
-            text = _("Restart KOReader?"),
-            ok_text = _("Restart"),
-            ok_callback = function()
-                UIManager:restartKOReader()
-            end
-        }
-    )
+    UIManager:show(ConfirmBox:new {
+        text = _("Restart KOReader?"),
+        ok_text = _("Restart"),
+        ok_callback = function()
+            UIManager:restartKOReader()
+        end,
+    })
 end
 
--- readinginsights.koplugin registers itself on the FileManager instance under
--- its `name` field ("readinginsights"), same pattern as fm.rakuyomi below -
--- see the earlier navbar-patch fix for why this replaced the old lfs-based
--- patch-file existence check.
+-- Reading Insights is exposed through its FileManager registration.
 local function onTabStats()
     local fm = FileManager.instance
     local reading_insights = fm and fm.readinginsights
@@ -367,7 +356,9 @@ local function onTabStats()
         setActiveTab("stats")
         UIManager:sendEvent(Event:new("ShowReadingInsightsPopup"))
     else
-        UIManager:show(InfoMessage:new {text = _("Reading insights plugin (readinginsights.koplugin) is not installed.")})
+        UIManager:show(
+            InfoMessage:new { text = _("Reading insights plugin (readinginsights.koplugin) is not installed.") }
+        )
     end
 end
 
@@ -388,7 +379,7 @@ local function onTabZlib()
             return
         end
     end
-    UIManager:show(InfoMessage:new {text = _("zlibrary.koplugin is not installed.")})
+    UIManager:show(InfoMessage:new { text = _("zlibrary.koplugin is not installed.") })
 end
 
 local function onTabAnnas()
@@ -414,10 +405,10 @@ local function onTabAnnas()
         elseif annas.showMultiSearchDialog then
             annas:showMultiSearchDialog()
         else
-            UIManager:show(InfoMessage:new {text = _("Could not open Anna's Archive plugin.")})
+            UIManager:show(InfoMessage:new { text = _("Could not open Anna's Archive plugin.") })
         end
     else
-        UIManager:show(InfoMessage:new {text = _("annas.koplugin is not installed.")})
+        UIManager:show(InfoMessage:new { text = _("annas.koplugin is not installed.") })
     end
 end
 
@@ -430,7 +421,7 @@ local function onTabAppStore()
     if appstore then
         appstore:showBrowser()
     else
-        UIManager:show(InfoMessage:new {text = _("appstore.koplugin is not installed.")})
+        UIManager:show(InfoMessage:new { text = _("appstore.koplugin is not installed.") })
     end
 end
 
@@ -443,7 +434,7 @@ local function onTabOpds()
     local opds = fm.opds
     if not opds then
         UIManager:show(
-            InfoMessage:new {text = _("OPDS plugin is not enabled.\nEnable it in Settings > Plugins."), timeout = 4}
+            InfoMessage:new { text = _("OPDS plugin is not enabled.\nEnable it in Settings > Plugins."), timeout = 4 }
         )
         return
     end
@@ -457,8 +448,7 @@ local function onTabOpds()
     local function openServer(server)
         local OPDSBrowser = require("opdsbrowser")
         local browser
-        browser =
-            OPDSBrowser:new {
+        browser = OPDSBrowser:new {
             servers = opds.servers,
             downloads = opds.downloads,
             settings = opds.settings,
@@ -485,7 +475,7 @@ local function onTabOpds()
                     end
                     opds.last_downloaded_file = nil
                 end
-            end
+            end,
         }
         opds.opds_browser = browser
         UIManager:show(browser)
@@ -506,26 +496,34 @@ local function onTabOpds()
     local buttons = {}
     for _, server in ipairs(servers) do
         local s = server
-        table.insert(buttons, {{text = s.title, align = "left", callback = function()
-            UIManager:close(dialog)
-            openServer(s)
-        end}})
+        table.insert(buttons, {
+            {
+                text = s.title,
+                align = "left",
+                callback = function()
+                    UIManager:close(dialog)
+                    openServer(s)
+                end,
+            },
+        })
     end
     table.insert(buttons, {})
-    table.insert(
-        buttons,
-        {{text = _("All catalogs"), align = "left", callback = function()
-            UIManager:close(dialog)
-            openFullBrowser()
-        end}}
-    )
+    table.insert(buttons, {
+        {
+            text = _("All catalogs"),
+            align = "left",
+            callback = function()
+                UIManager:close(dialog)
+                openFullBrowser()
+            end,
+        },
+    })
 
-    dialog =
-        ButtonDialog:new {
+    dialog = ButtonDialog:new {
         title = _("Open OPDS catalog"),
         title_align = "center",
         buttons = buttons,
-        shrink_unneeded_width = true
+        shrink_unneeded_width = true,
     }
     UIManager:show(dialog)
 end
@@ -553,7 +551,7 @@ local function onTabCustom(tab_id)
                 fm.file_chooser:changeToPath(ct.folder_path)
                 setActiveTab(ct.id)
             else
-                UIManager:show(InfoMessage:new {text = _("Folder not found: ") .. ct.folder_path, timeout = 3})
+                UIManager:show(InfoMessage:new { text = _("Folder not found: ") .. ct.folder_path, timeout = 3 })
             end
         end
         return
@@ -574,7 +572,7 @@ local function onTabCustom(tab_id)
             plugin[ct.fm_method](plugin)
             return
         end
-        UIManager:show(InfoMessage:new {text = _("Plugin not available: ") .. ct.fm_key, timeout = 3})
+        UIManager:show(InfoMessage:new { text = _("Plugin not available: ") .. ct.fm_key, timeout = 3 })
         return
     end
 
@@ -588,7 +586,7 @@ local function onTabCustom(tab_id)
         end
     end
 
-    UIManager:show(InfoMessage:new {text = _("Custom tab action not configured correctly."), timeout = 3})
+    UIManager:show(InfoMessage:new { text = _("Custom tab action not configured correctly."), timeout = 3 })
 end
 
 local tab_callbacks = {
@@ -608,7 +606,7 @@ local tab_callbacks = {
     page_right = onTabPageRight,
     sleep = onTabSleep,
     restart = onTabRestart,
-    stats = onTabStats
+    stats = onTabStats,
 }
 
 getTabCallback = function(tab_id)
@@ -626,9 +624,7 @@ getTabCallback = function(tab_id)
     return nil
 end
 
--- ===========================================================================
 -- Colored text/icon widgets (for the active-tab color setting)
--- ===========================================================================
 
 local ColorTextWidget = TextWidget:extend {}
 
@@ -675,7 +671,7 @@ function ColorTextWidget:paintTo(bb, x, y)
     end
 end
 
-local ColorIconWidget = IconWidget:extend {_tint_color = nil}
+local ColorIconWidget = IconWidget:extend { _tint_color = nil }
 
 function ColorIconWidget:paintTo(bb, x, y)
     if not self._tint_color or not Screen:isColorScreen() then
@@ -687,7 +683,7 @@ function ColorIconWidget:paintTo(bb, x, y)
     end
     local size = self:getSize()
     if not self.dimen then
-        self.dimen = Geom:new {x = x, y = y, w = size.w, h = size.h}
+        self.dimen = Geom:new { x = x, y = y, w = size.w, h = size.h }
     else
         self.dimen.x = x
         self.dimen.y = y
@@ -697,9 +693,7 @@ function ColorIconWidget:paintTo(bb, x, y)
     self._bb:invert()
 end
 
--- ===========================================================================
 -- Build a single tab / the full navbar
--- ===========================================================================
 
 local function createTabWidget(tab, tab_w, is_active)
     local c = cfg()
@@ -715,25 +709,43 @@ local function createTabWidget(tab, tab_w, is_active)
 
     local use_bold = styled and c.active_tab_bold
 
+    -- Let KOReader resolve custom icons from <data>/icons. Built-in VOS tabs
+    -- keep using the plugin resources so they do not require copied files.
+    local icon_file = tab.is_custom and customIconFile(tab.icon) or vosicons.iconFile(tab.icon)
     local icon
     if active_color then
-        icon = ColorIconWidget:new {icon = tab.icon, file = vosicons.iconFile(tab.icon), width = navbar_icon_size, height = navbar_icon_size, _tint_color = active_color}
+        icon = ColorIconWidget:new {
+            icon = tab.icon,
+            file = icon_file,
+            width = navbar_icon_size,
+            height = navbar_icon_size,
+            _tint_color = active_color,
+        }
     else
-        icon = IconWidget:new {icon = tab.icon, file = vosicons.iconFile(tab.icon), width = navbar_icon_size, height = navbar_icon_size}
+        icon = IconWidget:new {
+            icon = tab.icon,
+            file = icon_file,
+            width = navbar_icon_size,
+            height = navbar_icon_size,
+        }
     end
 
     local label
     if active_color then
-        label = ColorTextWidget:new {text = tab.label, face = use_bold and navbar_font_bold or navbar_font, fgcolor = active_color}
+        label = ColorTextWidget:new {
+            text = tab.label,
+            face = use_bold and navbar_font_bold or navbar_font,
+            fgcolor = active_color,
+        }
     else
-        label = TextWidget:new {text = tab.label, face = use_bold and navbar_font_bold or navbar_font}
+        label = TextWidget:new { text = tab.label, face = use_bold and navbar_font_bold or navbar_font }
     end
 
     local icon_label_group
     if c.show_labels then
-        icon_label_group = VerticalGroup:new {align = "center", icon, label}
+        icon_label_group = VerticalGroup:new { align = "center", icon, label }
     else
-        icon_label_group = VerticalGroup:new {align = "center", icon}
+        icon_label_group = VerticalGroup:new { align = "center", icon }
     end
 
     local show_underline = styled and c.active_tab_underline
@@ -748,30 +760,45 @@ local function createTabWidget(tab, tab_w, is_active)
         end
         if c.colored and Screen:isColorScreen() then
             local Widget = require("ui/widget/widget")
-            local color_line = Widget:new {dimen = Geom:new {w = tab_w, h = underline_thickness}}
+            local color_line = Widget:new { dimen = Geom:new { w = tab_w, h = underline_thickness } }
             function color_line:paintTo(bb, x, y)
                 bb:paintRectRGB32(x, y, self.dimen.w, self.dimen.h, underline_color)
             end
             underline = color_line
         else
-            underline = LineWidget:new {dimen = Geom:new {w = tab_w, h = underline_thickness}, background = underline_color}
+            underline = LineWidget:new {
+                dimen = Geom:new { w = tab_w, h = underline_thickness },
+                background = underline_color,
+            }
         end
     else
-        underline = VerticalSpan:new {width = underline_thickness}
+        underline = VerticalSpan:new { width = underline_thickness }
     end
 
     local v_pad = c.show_labels and navbar_v_padding or navbar_v_padding * 2
 
     local children
     if c.underline_above then
-        children = {align = "center", underline, VerticalSpan:new {width = v_pad}, icon_label_group, VerticalSpan:new {width = v_pad}}
+        children = {
+            align = "center",
+            underline,
+            VerticalSpan:new { width = v_pad },
+            icon_label_group,
+            VerticalSpan:new { width = v_pad },
+        }
     else
-        children = {align = "center", VerticalSpan:new {width = v_pad}, icon_label_group, VerticalSpan:new {width = v_pad}, underline}
+        children = {
+            align = "center",
+            VerticalSpan:new { width = v_pad },
+            icon_label_group,
+            VerticalSpan:new { width = v_pad },
+            underline,
+        }
     end
 
     return CenterContainer:new {
-        dimen = Geom:new {w = tab_w, h = icon_label_group:getSize().h + v_pad * 2 + underline_thickness},
-        VerticalGroup:new(children)
+        dimen = Geom:new { w = tab_w, h = icon_label_group:getSize().h + v_pad * 2 + underline_thickness },
+        VerticalGroup:new(children),
     }
 end
 
@@ -804,43 +831,55 @@ createNavBar = function()
         table.insert(row, createTabWidget(tab, tab_w, tab.id == active_tab))
     end
 
-    local row_with_padding =
-        HorizontalGroup:new {HorizontalSpan:new {width = navbar_h_padding}, row, HorizontalSpan:new {width = navbar_h_padding}}
+    local row_with_padding = HorizontalGroup:new {
+        HorizontalSpan:new { width = navbar_h_padding },
+        row,
+        HorizontalSpan:new { width = navbar_h_padding },
+    }
     local row_h = row_with_padding:getSize().h
 
     local visual_children = {}
 
     if c.show_top_border then
-        local separator = LineWidget:new {dimen = Geom:new {w = inner_w, h = Size.line.medium}, background = Blitbuffer.COLOR_LIGHT_GRAY}
-        local separator_and_row =
-            OverlapGroup:new {
-            dimen = Geom:new {w = screen_w, h = row_h},
+        local separator = LineWidget:new {
+            dimen = Geom:new { w = inner_w, h = Size.line.medium },
+            background = Blitbuffer.COLOR_LIGHT_GRAY,
+        }
+        local separator_and_row = OverlapGroup:new {
+            dimen = Geom:new { w = screen_w, h = row_h },
             allow_mirroring = false,
-            CenterContainer:new {dimen = Geom:new {w = screen_w, h = Size.line.medium}, separator},
-            row_with_padding
+            CenterContainer:new { dimen = Geom:new { w = screen_w, h = Size.line.medium }, separator },
+            row_with_padding,
         }
         if c.show_top_gap then
-            table.insert(visual_children, VerticalSpan:new {width = navbar_top_gap})
+            table.insert(visual_children, VerticalSpan:new { width = navbar_top_gap })
         end
         table.insert(visual_children, separator_and_row)
     else
         if c.show_top_gap then
-            table.insert(visual_children, VerticalSpan:new {width = navbar_top_gap})
+            table.insert(visual_children, VerticalSpan:new { width = navbar_top_gap })
         end
         table.insert(visual_children, row_with_padding)
     end
 
     local visual = VerticalGroup:new(visual_children)
 
-    local navbar =
-        InputContainer:new {
-        dimen = Geom:new {w = screen_w, h = visual:getSize().h},
+    local navbar = InputContainer:new {
+        dimen = Geom:new { w = screen_w, h = visual:getSize().h },
         ges_events = {
-            TapNavBar = {GestureRange:new {ges = "tap", range = Geom:new {x = 0, y = 0, w = screen_w, h = Screen:getHeight()}}}
-        }
+            TapNavBar = {
+                GestureRange:new {
+                    ges = "tap",
+                    range = Geom:new { x = 0, y = 0, w = screen_w, h = Screen:getHeight() },
+                },
+            },
+        },
     }
 
     navbar.onTapNavBar = function(self, _, ges)
+        if not navbarEnabled() then
+            return false
+        end
         if not self.dimen or not self.dimen:contains(ges.pos) then
             return false
         end
@@ -856,11 +895,10 @@ createNavBar = function()
             cb()
         end
         local c2 = cfg()
-        local stays_in_browser =
-            tapped_id == "books" or
-            (tapped_id == "manga" and c2.manga_action == "folder" and c2.manga_folder ~= "") or
-            (tapped_id == "news" and c2.news_action == "folder" and c2.news_folder ~= "") or
-            (tapped_id:match("^folder_") ~= nil)
+        local stays_in_browser = tapped_id == "books"
+            or (tapped_id == "manga" and c2.manga_action == "folder" and c2.manga_folder ~= "")
+            or (tapped_id == "news" and c2.news_action == "folder" and c2.news_folder ~= "")
+            or (tapped_id:match("^folder_") ~= nil)
         if stays_in_browser and tapped_id ~= active_tab then
             setActiveTab(tapped_id)
         end
@@ -871,17 +909,20 @@ createNavBar = function()
     return navbar
 end
 
--- ===========================================================================
 -- Injection into FileManager / standalone views
--- ===========================================================================
 
 local function getNavbarHeight()
     local nb = createNavBar()
-    return nb and nb:getSize().h or 0
+    if not nb then
+        return 0
+    end
+    local height = nb:getSize().h
+    nb:free(true)
+    return height
 end
 
-local standalone_view_names = {history = true, collections = true, library_view = true}
-local standalone_nexttick_tab_ids = {library_view = "manga"}
+local standalone_view_names = { history = true, collections = true, library_view = true }
+local standalone_nexttick_tab_ids = { library_view = "manga" }
 
 local function isStandaloneNavbarView(menu)
     if standalone_view_names[menu.name] then
@@ -899,16 +940,23 @@ injectNavbar = function(fm)
     if not navbarEnabled() then
         return
     end
+    -- SimpleUI owns and deeply wraps the FileManager layout with its own
+    -- top/bottom navigation containers. Replacing that tree would discard
+    -- SimpleUI's layout, so let it remain the sole navbar provider.
+    if fm._navbar_container then
+        return
+    end
     local fm_ui = fm[1]
     if not fm_ui then
         return
     end
 
-    local file_chooser
+    local file_chooser = fm.file_chooser
     if fm._navbar_injected then
-        file_chooser = fm_ui[1] and fm_ui[1][1]
-    else
-        file_chooser = fm_ui[1]
+        local old_navbar = fm_ui[1] and fm_ui[1][2]
+        if old_navbar then
+            old_navbar:free(true)
+        end
     end
     if not file_chooser then
         return
@@ -924,7 +972,7 @@ injectNavbar = function(fm)
 
     local navbar_h = navbar:getSize().h
     local new_height = Screen:getHeight() - navbar_h
-    if file_chooser.height ~= new_height then
+    if file_chooser.height ~= new_height and file_chooser.dimen and file_chooser.inner_dimen then
         local chrome = file_chooser.dimen.h - file_chooser.inner_dimen.h
         file_chooser.height = new_height
         file_chooser.dimen.h = new_height
@@ -942,7 +990,7 @@ injectNavbar = function(fm)
         fm.height = new_height
     end
 
-    fm_ui[1] = VerticalGroup:new {align = "left", file_chooser, navbar}
+    fm_ui[1] = VerticalGroup:new { align = "left", file_chooser, navbar }
 end
 
 -- Reverse of injectNavbar: restore the FileManager layout to its pre-injection
@@ -979,12 +1027,39 @@ local function uninjectNavbar(fm)
     end
 end
 
+local function uninjectStandaloneNavbar(menu)
+    if not menu or not menu._vos_navbar_original_child then
+        return
+    end
+    menu[1] = menu._vos_navbar_original_child
+    if menu._vos_navbar_original_child_height then
+        menu[1].height = menu._vos_navbar_original_child_height
+        menu._vos_navbar_original_child_height = nil
+    end
+    menu._vos_navbar_original_child = nil
+    if menu._vos_navbar_original_height then
+        menu.height = menu._vos_navbar_original_height
+        if menu.dimen then
+            menu.dimen.h = menu._vos_navbar_original_height
+        end
+        menu._vos_navbar_original_height = nil
+    end
+    if menu._vos_navbar_borderless_captured then
+        menu.is_borderless = menu._vos_navbar_original_borderless
+        menu._vos_navbar_original_borderless = nil
+        menu._vos_navbar_borderless_captured = nil
+    end
+end
+
 injectStandaloneNavbar = function(menu, view_tab_id)
-    if not navbarEnabled() then
+    if not navbarEnabled() or not cfg().show_in_standalone then
         return
     end
     if not menu or not menu[1] then
         return
+    end
+    if menu._vos_navbar_original_child then
+        uninjectStandaloneNavbar(menu)
     end
 
     local saved_active = active_tab
@@ -996,6 +1071,9 @@ injectStandaloneNavbar = function(menu, view_tab_id)
     end
 
     navbar.onTapNavBar = function(self_nb, _, ges)
+        if not navbarEnabled() then
+            return false
+        end
         if not self_nb.dimen or not self_nb.dimen:contains(ges.pos) then
             return false
         end
@@ -1034,16 +1112,21 @@ injectStandaloneNavbar = function(menu, view_tab_id)
         return true
     end
 
+    menu._vos_navbar_original_child = menu[1]
+    -- Menu.init was deliberately given the reduced height by our global hook;
+    -- the native layout to restore when disabled is the full screen.
+    menu._vos_navbar_original_height = Screen:getHeight()
+    menu._vos_navbar_tab_id = view_tab_id
+    standalone_views[menu] = true
     menu.dimen.h = Screen:getHeight()
 
     local FrameContainer = require("ui/widget/container/framecontainer")
-    menu[1] =
-        FrameContainer:new {
+    menu[1] = FrameContainer:new {
         background = Blitbuffer.COLOR_WHITE,
         bordersize = 0,
         padding = 0,
         margin = 0,
-        VerticalGroup:new {align = "left", menu[1], navbar}
+        VerticalGroup:new { align = "left", menu[1], navbar },
     }
 end
 
@@ -1064,7 +1147,7 @@ hookQuickRSSInit = function()
     function QuickRSSUI_class:init()
         orig_qrss_init(self)
 
-        if not cfg().show_in_standalone then
+        if not navbarEnabled() or not cfg().show_in_standalone then
             return
         end
 
@@ -1073,7 +1156,10 @@ hookQuickRSSInit = function()
             return
         end
 
-        self[1].height = self[1].height - navbar_h
+        local original_child_height = self[1].height
+        local original_list_h = self.list_h
+        local original_items_per_page = self.items_per_page
+        self[1].height = original_child_height - navbar_h
         self.list_h = self.list_h - navbar_h
         if QRSS_ITEM_HEIGHT then
             self.items_per_page = math.max(1, math.floor(self.list_h / QRSS_ITEM_HEIGHT))
@@ -1088,6 +1174,9 @@ hookQuickRSSInit = function()
         end
 
         navbar.onTapNavBar = function(self_nb, _, ges)
+            if not navbarEnabled() then
+                return false
+            end
             if not self_nb.dimen or not self_nb.dimen:contains(ges.pos) then
                 return false
             end
@@ -1118,16 +1207,21 @@ hookQuickRSSInit = function()
         end
 
         local FrameContainer = require("ui/widget/container/framecontainer")
-        self[1] =
-            FrameContainer:new {
+        self._vos_navbar_original_child = self[1]
+        self._vos_navbar_original_child_height = original_child_height
+        self._vos_navbar_original_list_h = original_list_h
+        self._vos_navbar_original_items_per_page = original_items_per_page
+        self._vos_navbar_is_qrss = true
+        standalone_views[self] = true
+        self[1] = FrameContainer:new {
             background = Blitbuffer.COLOR_WHITE,
             bordersize = 0,
             padding = 0,
             margin = 0,
-            VerticalGroup:new {align = "left", self[1], navbar}
+            VerticalGroup:new { align = "left", self[1], navbar },
         }
 
-        self.dimen = Geom:new {w = Screen:getWidth(), h = Screen:getHeight()}
+        self.dimen = Geom:new { w = Screen:getWidth(), h = Screen:getHeight() }
 
         if #self.articles > 0 then
             self:_populateItems()
@@ -1156,10 +1250,16 @@ local function installGlobalHooks()
         if navbarEnabled() and self.name == "filemanager" and not self.height then
             self.height = Screen:getHeight() - getNavbarHeight()
         elseif
-            navbarEnabled() and cfg().show_in_standalone and not _skip_standalone_navbar and
-                isStandaloneNavbarView(self)
-         then
+            navbarEnabled()
+            and cfg().show_in_standalone
+            and not _skip_standalone_navbar
+            and isStandaloneNavbarView(self)
+        then
             self.height = Screen:getHeight() - getNavbarHeight()
+            if not self._vos_navbar_borderless_captured then
+                self._vos_navbar_original_borderless = self.is_borderless
+                self._vos_navbar_borderless_captured = true
+            end
             if not self.is_borderless then
                 self.is_borderless = true
             end
@@ -1169,7 +1269,9 @@ local function installGlobalHooks()
         if nexttick_tab_id and navbarEnabled() and cfg().show_in_standalone then
             local menu = self
             UIManager:nextTick(function()
-                injectStandaloneNavbar(menu, nexttick_tab_id)
+                if navbarEnabled() and cfg().show_in_standalone then
+                    injectStandaloneNavbar(menu, nexttick_tab_id)
+                end
             end)
         end
     end
@@ -1180,6 +1282,9 @@ local function installGlobalHooks()
     function FileManager:onPathChanged(path)
         if orig_onPathChanged then
             orig_onPathChanged(self, path)
+        end
+        if not navbarEnabled() then
+            return
         end
 
         local function startsWith(str, prefix)
@@ -1199,9 +1304,8 @@ local function installGlobalHooks()
             end
         end
         if not new_tab then
-            local home_dir =
-                G_reader_settings:readSetting("home_dir") or
-                require("apps/filemanager/filemanagerutil").getDefaultDir()
+            local home_dir = G_reader_settings:readSetting("home_dir")
+                or require("apps/filemanager/filemanagerutil").getDefaultDir()
             if path == home_dir or startsWith(path, home_dir .. "/") then
                 new_tab = "books"
             end
@@ -1230,8 +1334,10 @@ local function installGlobalHooks()
         self._navbar_injected = false
         local fm = self
         UIManager:nextTick(function()
-            injectNavbar(fm)
-            UIManager:setDirty(fm, "ui")
+            if navbarEnabled() then
+                injectNavbar(fm)
+                UIManager:setDirty(fm, "ui")
+            end
         end)
     end
 
@@ -1268,19 +1374,9 @@ local function installGlobalHooks()
         end
         return result
     end
-
-    logger.info("VisualOverhaul/NavbarModule: global hooks installed")
 end
 
--- ===========================================================================
--- Plugin-facing class
--- ===========================================================================
-
-local NavbarModule = {
-    name = "navbar",
-    plugin = nil,
-    settings = nil
-}
+local NavbarModule = { name = "navbar" }
 
 function NavbarModule:new(o)
     o = o or {}
@@ -1290,8 +1386,6 @@ function NavbarModule:new(o)
 end
 
 function NavbarModule:init()
-    logger.info("NavbarModule: Initializing")
-
     SETTINGS_MANAGER = self.settings
     registerCustomTabs()
     updateLayoutConstants()
@@ -1300,7 +1394,9 @@ function NavbarModule:init()
     self.fm = FileManager.instance
     if self.fm then
         UIManager:nextTick(function()
-            injectNavbar(self.fm)
+            if navbarEnabled() then
+                injectNavbar(self.fm)
+            end
         end)
     end
 end
@@ -1309,7 +1405,6 @@ end
 -- reinject into the current FileManager (global hooks are never reinstalled,
 -- installGlobalHooks() is idempotent).
 function NavbarModule:reinit()
-    logger.info("NavbarModule: Reinitializing")
     registerCustomTabs()
     updateLayoutConstants()
     local fm = FileManager.instance
@@ -1319,7 +1414,35 @@ function NavbarModule:reinit()
         else
             uninjectNavbar(fm)
         end
-        UIManager:setDirty(fm, "full")
+        UIManager:setDirty(fm, "ui")
+    end
+    local standalone_enabled = navbarEnabled() and cfg().show_in_standalone
+    if not standalone_enabled then
+        for view in pairs(standalone_views) do
+            if view._vos_navbar_original_list_h then
+                view.list_h = view._vos_navbar_original_list_h
+                view._vos_navbar_original_list_h = nil
+            end
+            if view._vos_navbar_original_items_per_page then
+                view.items_per_page = view._vos_navbar_original_items_per_page
+                view._vos_navbar_original_items_per_page = nil
+            end
+            uninjectStandaloneNavbar(view)
+            if view._vos_navbar_is_qrss and view._populateItems and view.articles and #view.articles > 0 then
+                view:_populateItems()
+            end
+            UIManager:setDirty(view, "ui")
+        end
+    else
+        for view in pairs(standalone_views) do
+            if not view._vos_navbar_original_child
+                and not view._vos_navbar_is_qrss
+                and view._vos_navbar_tab_id
+            then
+                injectStandaloneNavbar(view, view._vos_navbar_tab_id)
+                UIManager:setDirty(view, "ui")
+            end
+        end
     end
 end
 

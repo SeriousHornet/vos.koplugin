@@ -1,6 +1,4 @@
---[[--
-Visual Overhaul Module (vos.lua) - unified coordinator for every cover-grid visual patch: rounded corners, stretched covers, series indicator, faded finished books, progress bar, percent/pages badges, status icons, disabled native widgets, and folder covers.
---]] --
+-- Cover-grid enhancements and badges.
 
 local AlphaContainer = require("ui/widget/container/alphacontainer")
 local BD = require("ui/bidi")
@@ -14,11 +12,13 @@ local FrameContainer = require("ui/widget/container/framecontainer")
 local IconWidget = require("ui/widget/iconwidget")
 local ImageWidget = require("ui/widget/imagewidget")
 local OverlapGroup = require("ui/widget/overlapgroup")
+local RenderImage = require("ui/renderimage")
 local Screen = require("device").screen
 local Size = require("ui/size")
 local TextBoxWidget = require("ui/widget/textboxwidget")
 local vosicons = require("modules/vosicons")
 local Menu = require("ui/widget/menu")
+local MenuTextOverrides = require("modules/menu_text_overrides")
 local TextWidget = require("ui/widget/textwidget")
 local UIManager = require("ui/uimanager")
 local VerticalSpan = require("ui/widget/verticalspan")
@@ -28,47 +28,37 @@ local ReadCollection = require("readcollection")
 local logger = require("logger")
 local _ = require("gettext")
 
--- ===========================================================================
--- Module-level (singleton) state
--- ===========================================================================
-
 local SETTINGS_MANAGER = nil
 local MAX_IMG_W, MAX_IMG_H -- book-cover max cell size, set in init()
-local FOLDER_ADJ_W, FOLDER_ADJ_H -- folder-cover adjusted size, set in init()
 
 local function getCfg()
     return SETTINGS_MANAGER.settings.coverbrowser
 end
 
--- Master kill-switch: mirrors enabled_modules.coverbrowser in settings.lua.
--- Every patch below checks it live, so toggling it off stops all CoverBrowser
--- rendering without needing to uninstall the (idempotent) patches.
 local function masterEnabled()
-    return SETTINGS_MANAGER
-        and SETTINGS_MANAGER.settings
-        and SETTINGS_MANAGER.settings.enabled_modules
-        and SETTINGS_MANAGER.settings.enabled_modules.coverbrowser == true
+    return SETTINGS_MANAGER and SETTINGS_MANAGER:isMasterEnabled()
 end
 
--- Per-feature gates for the features formerly living in their own modules.
--- They mirror enabled_modules.hide_pagination / enabled_modules.collection_star
--- and are checked live, exactly like masterEnabled() above.
+-- These gates remain live because process-wide hooks cannot be uninstalled.
 local function hidePaginationEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.hide_pagination == true
 end
 
 local function collectionStarEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.collection_star == true
 end
 
 local function hideNativeCollectionStarEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.hide_collection_star == true
@@ -83,12 +73,12 @@ end
 
 local function rgbFromHex(hex)
     if not hex or not hex:match("^#[0-9a-fA-F]+$") or #hex ~= 7 then
-        return {0, 0, 0}
+        return { 0, 0, 0 }
     end
     return {
         tonumber(hex:sub(2, 3), 16),
         tonumber(hex:sub(4, 5), 16),
-        tonumber(hex:sub(6, 7), 16)
+        tonumber(hex:sub(6, 7), 16),
     }
 end
 
@@ -100,7 +90,13 @@ local function paintRoundedRectRGB32(bb, x, y, w, h, color_rgb, radius)
     local tmp_bb = Blitbuffer.new(w, h)
     tmp_bb:paintRoundedRect(0, 0, w, h, Blitbuffer.COLOR_WHITE, radius)
     bb:colorblitFromRGB32(
-        tmp_bb, x, y, 0, 0, w, h,
+        tmp_bb,
+        x,
+        y,
+        0,
+        0,
+        w,
+        h,
         Blitbuffer.ColorRGB32(color_rgb[1], color_rgb[2], color_rgb[3], 0xFF)
     )
     tmp_bb:free()
@@ -115,10 +111,7 @@ local function paintRoundedBadgeRGB32(bb, x, y, w, h, border_w, border_rgb, back
     local fill_h = math.max(1, h - 2 * inset)
     local fill_radius = math.max(0, radius - inset)
     fill_radius = math.min(fill_radius, math.floor(math.min(fill_w, fill_h) / 2))
-    paintRoundedRectRGB32(
-        bb, x + inset, y + inset, fill_w, fill_h,
-        background_rgb, fill_radius
-    )
+    paintRoundedRectRGB32(bb, x + inset, y + inset, fill_w, fill_h, background_rgb, fill_radius)
 end
 
 local function paintCircleRGB32(bb, center_x, center_y, radius, color_rgb)
@@ -126,13 +119,19 @@ local function paintCircleRGB32(bb, center_x, center_y, radius, color_rgb)
     local tmp_bb = Blitbuffer.new(size, size)
     tmp_bb:paintCircle(radius, radius, radius, Blitbuffer.COLOR_WHITE)
     bb:colorblitFromRGB32(
-        tmp_bb, center_x - radius, center_y - radius, 0, 0, size, size,
+        tmp_bb,
+        center_x - radius,
+        center_y - radius,
+        0,
+        0,
+        size,
+        size,
         Blitbuffer.ColorRGB32(color_rgb[1], color_rgb[2], color_rgb[3], 0xFF)
     )
     tmp_bb:free()
 end
 
-local ColorTextWidget = TextWidget:extend {_vos_rgb = nil}
+local ColorTextWidget = TextWidget:extend { _vos_rgb = nil }
 
 function ColorTextWidget:paintTo(bb, x, y)
     if not self._vos_rgb or not Screen:isColorScreen() then
@@ -146,137 +145,55 @@ function ColorTextWidget:paintTo(bb, x, y)
     TextWidget.paintTo(self, tmp_bb, 0, 0)
     self.fgcolor = original_color
     bb:colorblitFromRGB32(
-        tmp_bb, x, y, 0, 0, size.w, size.h,
+        tmp_bb,
+        x,
+        y,
+        0,
+        0,
+        size.w,
+        size.h,
         Blitbuffer.ColorRGB32(self._vos_rgb[1], self._vos_rgb[2], self._vos_rgb[3], 0xFF)
     )
     tmp_bb:free()
 end
 
--- ===========================================================================
--- Default settings + deep-fill (so this module works even if settings.lua
--- hasn't been updated with a matching "coverbrowser" defaults block yet)
--- ===========================================================================
+local rounded_corner_cache = {}
 
-local DEFAULTS = {
-    rounded_corners = {enabled = true},
+local function getRoundedCornerIcons(size)
+    if rounded_corner_cache[size] then
+        return rounded_corner_cache[size]
+    end
+    local icons = {}
+    for __, corner in ipairs { "tl", "tr", "bl", "br" } do
+        local name = "rounded.corner." .. corner
+        icons[corner] = IconWidget:new {
+            icon = name,
+            file = vosicons.iconFile(name),
+            width = size,
+            height = size,
+            alpha = true,
+        }
+    end
+    rounded_corner_cache[size] = icons
+    return icons
+end
 
-    -- Shared by stretch_covers (book covers) and folder_covers (folder
-    -- images) - both used to duplicate this exact aspect-ratio math.
-    cover_aspect_ratio = {ratio_w = 2, ratio_h = 3, stretch_limit = 50, fill = false},
-    stretch_covers = {enabled = true},
-
-    series_indicator = {
-        style = "badge", -- "off" | "badge" | "bar"
-        font_size = 11,
-        border_thickness = 1,
-        border_corner_radius = 9,
-        text_color = "#000000",
-        border_color = "#000000",
-        background_color = "#E7E7E7"
-    },
-
-    faded_finished = {enabled = true, fading_amount = 0.5},
-
-    progress_bar = {
-        enabled = true,
-        colored = false,
-        hide_native = true,
-        position = "bottom",
-        bar_h = 9,
-        bar_radius = 3,
-        inset_x = 6,
-        inset_y = 12,
-        move_on_x = 0,
-        move_on_y = 0,
-        gap_to_icon = 0,
-        track_color = "#F4F0EC",
-        fill_color = "#555555",
-        abandoned_color = "#C0C0C0",
-        fill_color_rgb = {0x4C, 0xAF, 0x50},
-        abandoned_color_rgb = {0xF4, 0x43, 0x36},
-        border_w = 0.5,
-        border_color = "#000000"
-    },
-
-    percent_badge = {enabled = true, position = "top_right", text_size = 0.5, move_on_x = 5, move_on_y = -1, badge_w = 70, badge_h = 40, bump_up = 1},
-
-    pages_badge = {
-        enabled = false,
-        position = "bottom_left",
-        font_size = 0.95,
-        border_thickness = 2,
-        border_corner_radius = 12,
-        text_color = "#FFFFFF",
-        border_color = "#888888",
-        background_color = "#333333",
-        x_offset = 8,
-        y_offset = 8
-    },
-
-    status_icons = {enabled = true},
-
-    disable_description_hint = true,
-
-    folder_covers = {
-        enabled = true,
-        show_folder_name = true,
-        name_centered = true,
-        folder_name_position = "center",
-        file_count_position = "bottom_right",
-        file_count_size = 14,
-        folder_font_size = 20,
-        folder_border = 0.5
-    }
-}
-
-local function deepFill(dst, defaults)
-    for k, v in pairs(defaults) do
-        if type(v) == "table" then
-            if type(dst[k]) ~= "table" then
-                dst[k] = {}
-            end
-            deepFill(dst[k], v)
-        elseif dst[k] == nil then
-            dst[k] = v
+local function clearRoundedCornerCache()
+    for size, icons in pairs(rounded_corner_cache) do
+        for __, icon in pairs(icons) do
+            icon:free()
         end
+        rounded_corner_cache[size] = nil
     end
 end
 
--- Collection-star settings (formerly modules/collection_star.lua). Stored at
--- top level (settings.collection_star), not under coverbrowser, so the saved
--- settings stay compatible with the old standalone module.
-local COLLECTION_STAR_DEFAULTS = {
-    size = 20,
-    x_offset = 6,
-    y_offset = 6,
-    position = "top_left", -- "top_left" | "top_right" | "bottom_left" | "bottom_right"
-    use_background_circle = true,
-    background_color = "#000000"
-}
-
--- ===========================================================================
--- Shared rounded-corner SVG icons (used by both the generic rounded_corners
--- feature and folder_covers - loaded once at file scope, same as every
--- source patch did).
--- ===========================================================================
-
-local function svgCornerWidget(icon)
-    return IconWidget:new {icon = icon, file = vosicons.iconFile(icon), alpha = true}
-end
-
-local ROUND_CORNER_ICONS = {
-    tl = svgCornerWidget("rounded.corner.tl"),
-    tr = svgCornerWidget("rounded.corner.tr"),
-    bl = svgCornerWidget("rounded.corner.bl"),
-    br = svgCornerWidget("rounded.corner.br")
-}
-
--- ===========================================================================
--- Feature: rounded corners
--- ===========================================================================
-
-local function paintRoundedCorners(bb, target, x, y, self_widget)
-    local TL, TR, BL, BR = ROUND_CORNER_ICONS.tl, ROUND_CORNER_ICONS.tr, ROUND_CORNER_ICONS.bl, ROUND_CORNER_ICONS.br
+local function paintRoundedCorners(bb, target, x, y, self_widget, c)
+    local corner_size = math.max(
+        1,
+        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), target.dimen.w, target.dimen.h))
+    )
+    local icons = getRoundedCornerIcons(corner_size)
+    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
         return
     end
@@ -298,9 +215,8 @@ local function paintRoundedCorners(bb, target, x, y, self_widget)
         local s = w:getSize()
         return s.w, s.h
     end
-    local tlw, tlh = sz(TL)
-    local trw, trh = sz(TR)
-    local blw, blh = sz(BL)
+    local trw = select(1, sz(TR))
+    local blh = select(2, sz(BL))
     local brw, brh = sz(BR)
 
     TL:paintTo(bb, fx, fy)
@@ -309,10 +225,6 @@ local function paintRoundedCorners(bb, target, x, y, self_widget)
     BR:paintTo(bb, fx + fw - brw, fy + fh - brh)
 end
 
--- ===========================================================================
--- Feature: series indicator - "badge" style or "bar" style
--- ===========================================================================
-
 local function initSeriesBadge(self_widget, c)
     local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
     if bookinfo and bookinfo.series and bookinfo.series_index then
@@ -320,25 +232,22 @@ local function initSeriesBadge(self_widget, c)
         self_widget.series_index = bookinfo.series_index
 
         local border = scfg.border_thickness
-        local series_text =
-            ColorTextWidget:new {
+        local series_text = ColorTextWidget:new {
             text = "#" .. self_widget.series_index,
             face = Font:getFace("cfont", scfg.font_size),
             bold = true,
             fgcolor = colorFromHex(scfg.text_color),
-            _vos_rgb = rgbFromHex(scfg.text_color)
+            _vos_rgb = rgbFromHex(scfg.text_color),
         }
 
-        self_widget.series_badge =
-            FrameContainer:new {
+        self_widget.series_badge = FrameContainer:new {
             linesize = Screen:scaleBySize(2),
             bordersize = 0,
             padding = Screen:scaleBySize(2) + border,
             margin = 0,
-            series_text
+            series_text,
         }
 
-        self_widget._series_text = series_text
         self_widget._series_badge_border = border
         self_widget._series_badge_radius = Screen:scaleBySize(scfg.border_corner_radius)
         self_widget._series_badge_border_rgb = rgbFromHex(scfg.border_color)
@@ -347,7 +256,7 @@ local function initSeriesBadge(self_widget, c)
     end
 end
 
-local function paintSeriesBadge(self_widget, bb, x, y)
+local function paintSeriesBadge(self_widget, bb)
     local target = self_widget[1] and self_widget[1][1] and self_widget[1][1][1]
     if not target or not target.dimen then
         return
@@ -363,7 +272,11 @@ local function paintSeriesBadge(self_widget, bb, x, y)
     local badge_y = math.floor(target.dimen.y + iy + (d_h - badge_size.h) / 2)
 
     paintRoundedBadgeRGB32(
-        bb, badge_x, badge_y, badge_size.w, badge_size.h,
+        bb,
+        badge_x,
+        badge_y,
+        badge_size.w,
+        badge_size.h,
         self_widget._series_badge_border,
         self_widget._series_badge_border_rgb,
         self_widget._series_badge_background_rgb,
@@ -400,10 +313,6 @@ local function paintSeriesIndicatorBar(self_widget, bb, target, x)
     bb:paintBorder(target.dimen.x + ix, target.dimen.y + iy, d_w, d_h, 1)
 end
 
--- ===========================================================================
--- Feature: faded finished books
--- ===========================================================================
-
 local function paintFadedFinished(bb, target, x, y, self_widget, c)
     if self_widget.status ~= "complete" then
         return
@@ -414,13 +323,8 @@ local function paintFadedFinished(bb, target, x, y, self_widget, c)
     bb:lightenRect(fx, fy, tw, th, c.faded_finished.fading_amount)
 end
 
--- ===========================================================================
--- Feature: progress bar - mono or colored
--- ===========================================================================
-
 local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_size)
     local pf = self_widget.percent_finished
-    -- Both source patches skip entirely once a book is complete.
     if not pf or self_widget.status == "complete" then
         return
     end
@@ -442,9 +346,8 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
     local left = ix + INSET_X + MOVE_X
     local right = ix + iw - INSET_X + MOVE_X
 
-    local has_corner_icon =
-        (self_widget.been_opened or self_widget.do_hint_opened) and
-        (self_widget.status == "reading" or self_widget.status == "abandoned")
+    local has_corner_icon = (self_widget.been_opened or self_widget.do_hint_opened)
+        and (self_widget.status == "reading" or self_widget.status == "abandoned")
     if pcfg.position ~= "top" and has_corner_icon and corner_mark_size then
         right = right - (corner_mark_size + Screen:scaleBySize(pcfg.gap_to_icon))
     end
@@ -466,29 +369,68 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
 
     if pcfg.colored then
         paintRoundedBadgeRGB32(
-            bb, bar_x - BORDER_W, bar_y - BORDER_W,
-            bar_w + 2 * BORDER_W, BAR_H + 2 * BORDER_W,
-            BORDER_W, rgbFromHex(pcfg.border_color), rgbFromHex(pcfg.track_color),
+            bb,
+            bar_x - BORDER_W,
+            bar_y - BORDER_W,
+            bar_w + 2 * BORDER_W,
+            BAR_H + 2 * BORDER_W,
+            BORDER_W,
+            rgbFromHex(pcfg.border_color),
+            rgbFromHex(pcfg.track_color),
             BAR_RADIUS + BORDER_W
         )
         local fill_rgb = (self_widget.status == "abandoned") and pcfg.abandoned_color_rgb or pcfg.fill_color_rgb
         paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     else
         paintRoundedBadgeRGB32(
-            bb, bar_x - BORDER_W, bar_y - BORDER_W,
-            bar_w + 2 * BORDER_W, BAR_H + 2 * BORDER_W,
-            BORDER_W, rgbFromHex(pcfg.border_color), rgbFromHex(pcfg.track_color),
+            bb,
+            bar_x - BORDER_W,
+            bar_y - BORDER_W,
+            bar_w + 2 * BORDER_W,
+            BAR_H + 2 * BORDER_W,
+            BORDER_W,
+            rgbFromHex(pcfg.border_color),
+            rgbFromHex(pcfg.track_color),
             BAR_RADIUS + BORDER_W
         )
-        local fill_rgb = (self_widget.status == "abandoned")
-            and rgbFromHex(pcfg.abandoned_color) or rgbFromHex(pcfg.fill_color)
+        local fill_rgb = (self_widget.status == "abandoned") and rgbFromHex(pcfg.abandoned_color)
+            or rgbFromHex(pcfg.fill_color)
         paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     end
 end
 
--- ===========================================================================
--- Feature: percent badge
--- ===========================================================================
+local percent_badge_cache = {}
+
+local function getPercentBadgeImage(width, height)
+    local key = width .. "x" .. height
+    if percent_badge_cache[key] then
+        return percent_badge_cache[key]
+    end
+
+    local render_size = math.max(width, height)
+    local image, straight_alpha = RenderImage:renderSVGImageFile(
+        vosicons.iconFile("percent.badge"),
+        render_size,
+        render_size
+    )
+    if not image then
+        return
+    end
+    if width ~= render_size or height ~= render_size then
+        image = RenderImage:scaleBlitBuffer(image, width, height)
+    end
+
+    local cached = { image = image, straight_alpha = straight_alpha }
+    percent_badge_cache[key] = cached
+    return cached
+end
+
+local function clearPercentBadgeCache()
+    for key, cached in pairs(percent_badge_cache) do
+        cached.image:free()
+        percent_badge_cache[key] = nil
+    end
+end
 
 local function getCornerPosition(position, left, top, width, height, item_w, item_h, x_offset, y_offset)
     if position == "top_left" then
@@ -506,10 +448,9 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
         return
     end
 
-    local shows =
-        (self_widget.do_hint_opened and self_widget.been_opened) or
-        (self_widget.menu and self_widget.menu.name == "history") or
-        (self_widget.menu and self_widget.menu.name == "collections")
+    local shows = (self_widget.do_hint_opened and self_widget.been_opened)
+        or (self_widget.menu and self_widget.menu.name == "history")
+        or (self_widget.menu and self_widget.menu.name == "collections")
     if not shows then
         return
     end
@@ -519,8 +460,7 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
 
     local percent_text = string.format("%d%%", math.floor(self_widget.percent_finished * 100))
     local font_size = math.floor(corner_mark_size * pcfg.text_size)
-    local percent_widget =
-        TextWidget:new {
+    local percent_widget = TextWidget:new {
         text = percent_text,
         font_size = font_size,
         face = Font:getFace("cfont", font_size),
@@ -528,7 +468,7 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
         fgcolor = Blitbuffer.COLOR_BLACK,
         bold = true,
         max_width = corner_mark_size,
-        truncate_with_ellipsis = true
+        truncate_with_ellipsis = true,
     }
 
     local BADGE_W = Screen:scaleBySize(pcfg.badge_w)
@@ -541,16 +481,20 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local fy = y + math.floor((self_widget.height - target.dimen.h) / 2)
     local fw, fh = target.dimen.w, target.dimen.h
 
-    local percent_badge_icon = IconWidget:new {icon = "percent.badge", file = vosicons.iconFile("percent.badge"), alpha = true}
-    percent_badge_icon.width = BADGE_W
-    percent_badge_icon.height = BADGE_H
+    local percent_badge = getPercentBadgeImage(BADGE_W, BADGE_H)
+    if not percent_badge then
+        percent_widget:free()
+        return
+    end
 
-    local bx, by = getCornerPosition(
-        pcfg.position, fx, fy, fw, fh, BADGE_W, BADGE_H, INSET_X, INSET_Y
-    )
+    local bx, by = getCornerPosition(pcfg.position, fx, fy, fw, fh, BADGE_W, BADGE_H, INSET_X, INSET_Y)
     bx, by = math.floor(bx), math.floor(by)
 
-    percent_badge_icon:paintTo(bb, bx, by)
+    if percent_badge.straight_alpha then
+        bb:alphablitFrom(percent_badge.image, bx, by, 0, 0, BADGE_W, BADGE_H)
+    else
+        bb:pmulalphablitFrom(percent_badge.image, bx, by, 0, 0, BADGE_W, BADGE_H)
+    end
 
     percent_widget.alignment = "center"
     percent_widget.truncate_with_ellipsis = false
@@ -560,14 +504,16 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local tx = bx + math.floor((BADGE_W - ts.w) / 2)
     local ty = by + math.floor((BADGE_H - ts.h) / 2) - Screen:scaleBySize(pcfg.bump_up)
     percent_widget:paintTo(bb, math.floor(tx), math.floor(ty))
+    percent_widget:free()
 end
 
--- ===========================================================================
--- Feature: pages badge
--- ===========================================================================
-
 local function paintPagesBadge(bb, target, x, y, self_widget, c)
-    if self_widget.is_directory or self_widget.file_deleted or self_widget.status == "complete" or self_widget.been_opened then
+    if
+        self_widget.is_directory
+        or self_widget.file_deleted
+        or self_widget.status == "complete"
+        or self_widget.been_opened
+    then
         return
     end
 
@@ -592,24 +538,22 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     local font_size = math.floor(corner_mark_size * pcfg.font_size)
 
     local border = pcfg.border_thickness
-    local pages_text =
-        ColorTextWidget:new {
+    local pages_text = ColorTextWidget:new {
         text = page_text,
         face = Font:getFace("cfont", font_size),
         alignment = "left",
         fgcolor = colorFromHex(pcfg.text_color),
         _vos_rgb = rgbFromHex(pcfg.text_color),
         bold = true,
-        padding = 2
+        padding = 2,
     }
 
-    local pages_badge_frame =
-        FrameContainer:new {
+    local pages_badge_frame = FrameContainer:new {
         linesize = Screen:scaleBySize(2),
         bordersize = 0,
         padding = Screen:scaleBySize(2) + border,
         margin = 0,
-        pages_text
+        pages_text,
     }
 
     local cover_left = x + math.floor((self_widget.width - target.dimen.w) / 2)
@@ -620,25 +564,25 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
 
     local x_offset = Screen:scaleBySize(pcfg.x_offset)
     local y_offset = Screen:scaleBySize(pcfg.y_offset)
-    local pos_x, pos_y = getCornerPosition(
-        pcfg.position, cover_left, cover_top, cover_w, cover_h,
-        badge_w, badge_h, x_offset, y_offset
-    )
+    local pos_x, pos_y =
+        getCornerPosition(pcfg.position, cover_left, cover_top, cover_w, cover_h, badge_w, badge_h, x_offset, y_offset)
     pos_x, pos_y = math.floor(pos_x), math.floor(pos_y)
 
     paintRoundedBadgeRGB32(
-        bb, pos_x, pos_y, badge_w, badge_h, border,
+        bb,
+        pos_x,
+        pos_y,
+        badge_w,
+        badge_h,
+        border,
         rgbFromHex(pcfg.border_color),
         rgbFromHex(pcfg.background_color),
         Screen:scaleBySize(pcfg.border_corner_radius)
     )
 
     pages_badge_frame:paintTo(bb, pos_x, pos_y)
+    pages_badge_frame:free(true)
 end
-
--- ===========================================================================
--- Feature: status icons
--- ===========================================================================
 
 local STATUS_ICON_ALPHA_NAMES = {
     ["dogear.reading"] = true,
@@ -646,7 +590,7 @@ local STATUS_ICON_ALPHA_NAMES = {
     ["dogear.abandoned.rtl"] = true,
     ["dogear.complete"] = true,
     ["dogear.complete.rtl"] = true,
-    ["star.white"] = true
+    ["star.white"] = true,
 }
 
 local function installIconAlphaOverride()
@@ -663,14 +607,14 @@ local function installIconAlphaOverride()
     end
 end
 
-local function paintStatusIconsOverlay(bb, x, y, self_widget)
-    local shows =
-        self_widget.status == "complete" or self_widget.status == "abandoned" or
-        (self_widget.do_hint_opened and self_widget.been_opened) or
-        (self_widget.percent_finished and
-            (self_widget.menu and
-                (self_widget.menu.name == "history" or
-                    self_widget.menu.name == "collections")))
+local function paintStatusIconsOverlay(bb, x, y, self_widget, c)
+    local shows = self_widget.status == "complete"
+        or self_widget.status == "abandoned"
+        or (self_widget.do_hint_opened and self_widget.been_opened)
+        or (
+            self_widget.percent_finished
+            and (self_widget.menu and (self_widget.menu.name == "history" or self_widget.menu.name == "collections"))
+        )
     if not shows then
         return
     end
@@ -680,7 +624,7 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
         return
     end
 
-    local corner_mark_size = math.floor(math.min(self_widget.width, self_widget.height) / 8)
+    local corner_mark_size = Screen:scaleBySize(c.status_icons.size)
     local ix, iy
     if BD.mirroredUILayout() then
         ix = math.floor((self_widget.width - target.dimen.w) / 2)
@@ -711,14 +655,11 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget)
     end
     if mark then
         mark:paintTo(bb, x + ix, y + iy)
+        mark:free()
     end
 end
 
--- ===========================================================================
--- Feature: collection star
--- ===========================================================================
-
-local function paintCollectionStar(bb, x, y, self_widget)
+local function paintCollectionStar(bb, self_widget)
     if not self_widget.filepath then
         return
     end
@@ -729,7 +670,7 @@ local function paintCollectionStar(bb, x, y, self_widget)
         return
     end
 
-    local settings = (SETTINGS_MANAGER and SETTINGS_MANAGER.settings and SETTINGS_MANAGER.settings.collection_star) or COLLECTION_STAR_DEFAULTS
+    local settings = SETTINGS_MANAGER.settings.collection_star
 
     local target = self_widget[1] and self_widget[1][1] and self_widget[1][1][1]
     if not target or not target.dimen then
@@ -760,23 +701,19 @@ local function paintCollectionStar(bb, x, y, self_widget)
         paintCircleRGB32(bb, center_x, center_y, radius, rgbFromHex(settings.background_color))
     end
 
-    local star =
-        IconWidget:new {
+    local star = IconWidget:new {
         icon = "star.white",
         file = vosicons.iconFile("star.white"),
         width = icon_size,
         height = icon_size,
-        alpha = true
+        alpha = true,
     }
 
     local icon_x = center_x - math.floor(icon_size / 2)
     local icon_y = center_y - math.floor(icon_size / 2)
     star:paintTo(bb, icon_x, icon_y)
+    star:free()
 end
-
--- ===========================================================================
--- Feature: disable native description hint
--- ===========================================================================
 
 local function installDescriptionHintOverride()
     if BookInfoManager.patched_vos_hint then
@@ -792,11 +729,7 @@ local function installDescriptionHintOverride()
     end
 end
 
--- ===========================================================================
--- Feature: folder covers
--- ===========================================================================
-
-local FolderCoverSpec = {name = ".cover", exts = {".jpg", ".jpeg", ".png", ".webp", ".gif"}}
+local FolderCoverSpec = { name = ".cover", exts = { ".jpg", ".jpeg", ".png", ".webp", ".gif" } }
 
 local function findFolderCoverFile(dir_path)
     local path = dir_path .. "/" .. FolderCoverSpec.name
@@ -833,12 +766,8 @@ local function isCoverFile(path)
 end
 
 local function getFolderAspectDimensions(width, height, border_size, c)
-    if FOLDER_ADJ_W and FOLDER_ADJ_H then
-        return {w = FOLDER_ADJ_W + 2 * border_size, h = FOLDER_ADJ_H + 2 * border_size}
-    end
-    -- Fallback if init() hasn't run yet for this item.
-    local available_w = width - 2 * border_size
-    local available_h = height - 2 * border_size
+    local available_w = width - 2 * Size.border.thin
+    local available_h = height - 2 * Size.border.thin
     local rcfg = c.cover_aspect_ratio
     local ratio = rcfg.fill and (available_w / available_h) or (rcfg.ratio_w / rcfg.ratio_h)
     local frame_w, frame_h
@@ -849,11 +778,11 @@ local function getFolderAspectDimensions(width, height, border_size, c)
         frame_w = available_w
         frame_h = available_w / ratio
     end
-    return {w = frame_w + 2 * border_size, h = frame_h + 2 * border_size}
+    return { w = frame_w + 2 * border_size, h = frame_h + 2 * border_size }
 end
 
 local function getFolderTextBox(self_widget, dimen, c)
-    local text = self_widget.text
+    local text = MenuTextOverrides.cleanText(self_widget.text, SETTINGS_MANAGER.settings.extras.menu_text)
     if text:match("/$") then
         text = text:sub(1, -2)
     end
@@ -867,13 +796,12 @@ local function getFolderTextBox(self_widget, dimen, c)
         if directory then
             directory:free(true)
         end
-        directory =
-            TextBoxWidget:new {
+        directory = TextBoxWidget:new {
             text = text,
             face = Font:getFace("cfont", dir_font_size),
             width = dimen.w,
             alignment = "center",
-            bold = true
+            bold = true,
         }
         if directory:getSize().h <= available_height then
             break
@@ -892,40 +820,45 @@ local function getFolderTextBox(self_widget, dimen, c)
 end
 
 local function setFolderCover(self_widget, img, c)
-    local border_size = 0
-    local frame_dimen = getFolderAspectDimensions(self_widget.width, self_widget.height, border_size, c)
-    local image_width = frame_dimen.w - 2 * border_size
-    local image_height = frame_dimen.h - 2 * border_size
+    local frame_dimen = getFolderAspectDimensions(self_widget.width, self_widget.height, 0, c)
     local rcfg = c.cover_aspect_ratio
 
-    local image =
-        img.file and
-        ImageWidget:new {file = img.file, width = image_width, height = image_height, stretch_limit_percentage = rcfg.stretch_limit} or
-        ImageWidget:new {image = img.data, width = image_width, height = image_height, stretch_limit_percentage = rcfg.stretch_limit}
+    local image = img.file
+            and ImageWidget:new {
+                file = img.file,
+                width = frame_dimen.w,
+                height = frame_dimen.h,
+                stretch_limit_percentage = rcfg.stretch_limit,
+            }
+        or ImageWidget:new {
+            image = img.data,
+            width = frame_dimen.w,
+            height = frame_dimen.h,
+            stretch_limit_percentage = rcfg.stretch_limit,
+        }
 
-    local image_widget = FrameContainer:new {padding = 0, bordersize = border_size, image, overlap_align = "center"}
+    local image_widget = FrameContainer:new { padding = 0, bordersize = 0, image, overlap_align = "center" }
     local image_size = image:getSize()
-    local directory = getFolderTextBox(self_widget, {w = image_size.w, h = image_size.h}, c)
 
     local fcfg = c.folder_covers
     local folder_name_widget
     if fcfg.show_folder_name then
-        local name_positions = {top = 0, center = 0.5, bottom = 1}
+        local directory = getFolderTextBox(self_widget, { w = image_size.w, h = image_size.h }, c)
+        local name_positions = { top = 0, center = 0.5, bottom = 1 }
         local name_frame = FrameContainer:new {
             padding = -1,
             bordersize = 1,
-            AlphaContainer:new {alpha = 0.75, directory}
+            AlphaContainer:new { alpha = 0.75, directory },
         }
-        folder_name_widget =
-            CustomPositionContainer:new {
+        folder_name_widget = CustomPositionContainer:new {
             dimen = frame_dimen,
             horizontal_position = 0.5,
             vertical_position = name_positions[fcfg.folder_name_position] or 0.5,
             widget = name_frame,
-            name_frame
+            name_frame,
         }
     else
-        folder_name_widget = VerticalSpan:new {width = 0}
+        folder_name_widget = VerticalSpan:new { width = 0 }
     end
 
     local nbitems_widget
@@ -945,18 +878,23 @@ local function setFolderCover(self_widget, img, c)
     local item_count = file_count > 0 and file_count or folder_count
 
     if item_count > 0 then
-        local nbitems = TextWidget:new {text = tostring(item_count), face = Font:getFace("cfont", fcfg.file_count_size), bold = true, padding = 0}
+        local nbitems = TextWidget:new {
+            text = tostring(item_count),
+            face = Font:getFace("cfont", fcfg.file_count_size),
+            bold = true,
+            padding = 0,
+        }
         local nb_size = math.max(nbitems:getSize().w, nbitems:getSize().h)
         local margin = Screen:scaleBySize(5)
         local count_positions = {
-            top_left = {0, 0},
-            top_center = {0.5, 0},
-            top_right = {1, 0},
-            center_left = {0, 0.5},
-            center_right = {1, 0.5},
-            bottom_left = {0, 1},
-            bottom_center = {0.5, 1},
-            bottom_right = {1, 1}
+            top_left = { 0, 0 },
+            top_center = { 0.5, 0 },
+            top_right = { 1, 0 },
+            center_left = { 0, 0.5 },
+            center_right = { 1, 0.5 },
+            bottom_left = { 0, 1 },
+            bottom_center = { 0.5, 1 },
+            bottom_right = { 1, 1 },
         }
         local count_position = count_positions[fcfg.file_count_position] or count_positions.bottom_right
         local count_badge = FrameContainer:new {
@@ -964,37 +902,35 @@ local function setFolderCover(self_widget, img, c)
             bordersize = 1,
             radius = math.ceil(nb_size),
             background = Blitbuffer.COLOR_GRAY_E,
-            CenterContainer:new {dimen = {w = nb_size, h = nb_size}, nbitems}
+            CenterContainer:new { dimen = { w = nb_size, h = nb_size }, nbitems },
         }
         local count_dimen = {
             w = math.max(1, frame_dimen.w - margin * 2),
-            h = math.max(1, frame_dimen.h - margin * 2)
+            h = math.max(1, frame_dimen.h - margin * 2),
         }
-        nbitems_widget =
-            CenterContainer:new {
+        nbitems_widget = CenterContainer:new {
             dimen = frame_dimen,
             CustomPositionContainer:new {
                 dimen = count_dimen,
                 horizontal_position = count_position[1],
                 vertical_position = count_position[2],
                 widget = count_badge,
-                count_badge
-            }
+                count_badge,
+            },
         }
     else
-        nbitems_widget = VerticalSpan:new {width = 0}
+        nbitems_widget = VerticalSpan:new { width = 0 }
     end
 
     self_widget._folder_frame_dimen = frame_dimen
     self_widget._folder_image_size = image_size
 
-    local widget =
+    local widget = CenterContainer:new {
+        dimen = { w = self_widget.width, h = self_widget.height },
         CenterContainer:new {
-        dimen = {w = self_widget.width, h = self_widget.height},
-        CenterContainer:new {
-            dimen = {w = self_widget.width, h = self_widget.height},
-            OverlapGroup:new {dimen = frame_dimen, image_widget, folder_name_widget, nbitems_widget}
-        }
+            dimen = { w = self_widget.width, h = self_widget.height },
+            OverlapGroup:new { dimen = frame_dimen, image_widget, folder_name_widget, nbitems_widget },
+        },
     }
 
     if self_widget._underline_container[1] then
@@ -1018,18 +954,8 @@ local function updateFolderCover(self_widget, c)
 
     local cover_file = findFolderCoverFile(dir_path)
     if cover_file then
-        local success, w, h =
-            pcall(
-            function()
-                local tmp_img = ImageWidget:new {file = cover_file, scale_factor = 1}
-                tmp_img:_render()
-                local ow, oh = tmp_img:getOriginalWidth(), tmp_img:getOriginalHeight()
-                tmp_img:free()
-                return ow, oh
-            end
-        )
+        local success = pcall(setFolderCover, self_widget, { file = cover_file }, c)
         if success then
-            setFolderCover(self_widget, {file = cover_file, w = w, h = h}, c)
             return
         end
     end
@@ -1045,11 +971,14 @@ local function updateFolderCover(self_widget, c)
         if entry.is_file or entry.file then
             local bookinfo = BookInfoManager:getBookInfo(entry.path, true)
             if
-                bookinfo and bookinfo.cover_bb and bookinfo.has_cover and bookinfo.cover_fetched and
-                    not bookinfo.ignore_cover and
-                    not BookInfoManager.isCachedCoverInvalid(bookinfo, self_widget.menu.cover_specs)
-             then
-                setFolderCover(self_widget, {data = bookinfo.cover_bb, w = bookinfo.cover_w, h = bookinfo.cover_h}, c)
+                bookinfo
+                and bookinfo.cover_bb
+                and bookinfo.has_cover
+                and bookinfo.cover_fetched
+                and not bookinfo.ignore_cover
+                and not BookInfoManager.isCachedCoverInvalid(bookinfo, self_widget.menu.cover_specs)
+            then
+                setFolderCover(self_widget, { data = bookinfo.cover_bb }, c)
                 break
             end
         end
@@ -1071,7 +1000,12 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     local cover_border = Screen:scaleBySize(c.folder_covers.folder_border)
     bb:paintBorder(image_x, image_y, image_size.w, image_size.h, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
 
-    local TL, TR, BL, BR = ROUND_CORNER_ICONS.tl, ROUND_CORNER_ICONS.tr, ROUND_CORNER_ICONS.bl, ROUND_CORNER_ICONS.br
+    local corner_size = math.max(
+        1,
+        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), image_size.w, image_size.h))
+    )
+    local icons = getRoundedCornerIcons(corner_size)
+    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
         return
     end
@@ -1080,9 +1014,8 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
         local s = w:getSize()
         return s.w, s.h
     end
-    local tlw, tlh = sz(TL)
-    local trw, trh = sz(TR)
-    local blw, blh = sz(BL)
+    local trw = select(1, sz(TR))
+    local blh = select(2, sz(BL))
     local brw, brh = sz(BR)
 
     TL:paintTo(bb, image_x, image_y)
@@ -1091,13 +1024,8 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     BR:paintTo(bb, image_x + image_size.w - brw, image_y + image_size.h - brh)
 end
 
--- Caches FileChooser:getListItem results, keyed by its arguments. Folder
--- covers call self.menu:genItemTableFromPath() during paint/update, which
--- is expensive without this - matches the source patch's cache exactly,
--- including its one known limitation: entries are never invalidated for
--- the lifetime of the FileChooser instance (a read-status or collection
--- change won't refresh a cached row until you leave and re-enter the
--- folder). Kept as-is for fidelity; worth revisiting later.
+-- Folder covers repeatedly generate item tables. Keep a small per-chooser
+-- cache so long browsing sessions cannot retain every directory ever seen.
 local function installFileChooserCache()
     if FileChooser._vos_getlistitem_patched then
         return
@@ -1105,56 +1033,61 @@ local function installFileChooserCache()
     FileChooser._vos_getlistitem_patched = true
 
     local orig_getListItem = FileChooser.getListItem
-    local cached_list = {}
-
-    local function toKey(...)
-        local keys = {}
-        for _, key in pairs({...}) do
-            if type(key) == "table" then
-                table.insert(keys, "table")
-                for k, v in pairs(key) do
-                    table.insert(keys, tostring(k))
-                    table.insert(keys, tostring(v))
-                end
-            else
-                table.insert(keys, tostring(key))
-            end
-        end
-        return table.concat(keys, "")
-    end
+    local orig_clearSortingCache = FileChooser.clearSortingCache
+    local max_cache_entries = 512
 
     function FileChooser:getListItem(dirpath, f, fullpath, attributes, collate)
         if not masterEnabled() then
             return orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
         end
-        local key = toKey(dirpath, f, fullpath, attributes, collate, self.show_filter.status)
-        cached_list[key] = cached_list[key] or orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
-        return cached_list[key]
+        local cache = self._vos_list_item_cache
+        if not cache then
+            cache = { count = 0 }
+            self._vos_list_item_cache = cache
+        end
+        local key = table.concat({
+            tostring(dirpath),
+            tostring(f),
+            tostring(fullpath),
+            tostring(attributes and attributes.mode),
+            tostring(attributes and attributes.size),
+            tostring(attributes and attributes.modification),
+            tostring(collate),
+            tostring(self.show_filter and self.show_filter.status),
+        }, "\31")
+        local item = cache[key]
+        if item then
+            return item
+        end
+        if cache.count >= max_cache_entries then
+            cache = { count = 0 }
+            self._vos_list_item_cache = cache
+        end
+        item = orig_getListItem(self, dirpath, f, fullpath, attributes, collate)
+        cache[key] = item
+        cache.count = cache.count + 1
+        return item
     end
 
-    logger.info("VisualOverhaul: FileChooser.getListItem cache installed")
+    function FileChooser:clearSortingCache(...)
+        self._vos_list_item_cache = nil
+        return orig_clearSortingCache(self, ...)
+    end
 end
 
--- ===========================================================================
--- Feature: hide pagination (formerly modules/hide_pagination.lua) - strips
--- the "« < Page N of M > »" footer from filemanager/history/collections
--- menus. Reversible: the footer widgets are captured at construction and can
--- be re-inserted live, so toggling enabled_modules.hide_pagination takes
--- effect on the current FileManager/History/Collections menus without a
--- restart (see CoverBrowserModule:reinit).
--- ===========================================================================
+-- Pagination widgets are retained so visibility can be toggled at runtime.
 
 local hide_pagination_names = {
     filemanager = true,
     history = true,
-    collections = true
+    collections = true,
 }
 
 local function isHidePaginationMenu(menu)
     -- Match by name, or by full-screen fm-style menus (e.g. collections
     -- list has no name)
-    return hide_pagination_names[menu.name] or
-        (menu.covers_fullscreen and menu.is_borderless and menu.title_bar_fm_style)
+    return hide_pagination_names[menu.name]
+        or (menu.covers_fullscreen and menu.is_borderless and menu.title_bar_fm_style)
 end
 
 -- Capture the footer/page_return widgets of a target Menu (stored on the
@@ -1177,7 +1110,7 @@ local function vosPreparePaginationState(menu)
     local removed = {}
     for i = 1, #holder do
         if holder[i] ~= menu.content_group then
-            table.insert(removed, {index = i, widget = holder[i]})
+            table.insert(removed, { index = i, widget = holder[i] })
         end
     end
     menu._vos_footer_holder = holder
@@ -1206,7 +1139,6 @@ vosSetPaginationHidden = function(menu, hidden)
                 table.remove(holder, i)
             end
         end
-        -- Recalculate to fill the space freed by removing the footer
         local orig = menu._vos_orig_recalculate
         menu._recalculateDimen = function(self_inner, no_recalculate_dimen)
             local saved_arrow = self_inner.page_return_arrow
@@ -1221,7 +1153,6 @@ vosSetPaginationHidden = function(menu, hidden)
             self_inner.page_info = saved_info
         end
     else
-        -- Re-insert the pagination footer and restore the original recalc
         for _, pair in ipairs(menu._vos_removed_footer) do
             if not holder[pair.index] then
                 pair.widget.dimen = (menu.inner_dimen or menu.dimen):copy()
@@ -1244,22 +1175,15 @@ local function installHidePaginationOverride()
     function Menu:init()
         orig_menu_init(self)
         if isHidePaginationMenu(self) then
-            -- Invalidate any cached pagination state: main.lua's refresh() calls
-            -- file_chooser:free() then file_chooser:init(), which rebuilds the
-            -- layout without clearing the _vos_* fields. Without this, the
-            -- re-init would keep using the stale (freed) OverlapGroup.
+            -- Reinitialization rebuilds the layout but retains instance fields.
             self._vos_pagination_ready = nil
             vosPreparePaginationState(self)
             vosSetPaginationHidden(self, hidePaginationEnabled())
         end
     end
-
-    logger.info("VisualOverhaul: Menu.init pagination-hide installed")
 end
 
--- ===========================================================================
 -- Upvalue-preserving method wrapping
--- ===========================================================================
 -- Third-party userpatches (e.g. 2-browser-hide-underline.lua) locate module
 -- internals by digging *named upvalues* out of MosaicMenuItem methods via
 -- userpatch.getUpValue(MosaicMenuItem.update, "BookInfoManager"). Naively
@@ -1319,11 +1243,15 @@ local function preserveUpvalues(orig_fn, logic)
     -- position of an argument list to a single value, which would silently
     -- corrupt every argument after the first (e.g. paintTo's x/y).
     local names_src = table.concat(names, ", ")
-    local chunk = "local " .. names_src .. "\n" ..
-        "local __vos_extra\n" ..
-        "return function(...)\n" ..
-        "    return __vos_extra.invoke(" .. names_src .. ", ...)\n" ..
-        "end\n"
+    local chunk = "local "
+        .. names_src
+        .. "\n"
+        .. "local __vos_extra\n"
+        .. "return function(...)\n"
+        .. "    return __vos_extra.invoke("
+        .. names_src
+        .. ", ...)\n"
+        .. "end\n"
     local factory = loadstring(chunk, "=vos.preserveUpvalues")
     if not factory then
         logger.warn("VisualOverhaul: failed to compile upvalue-preserving wrapper")
@@ -1347,14 +1275,10 @@ local function preserveUpvalues(orig_fn, logic)
     end
     local extra_slot = findUpvalueSlot(wrapper, "__vos_extra")
     if extra_slot then
-        debug.setupvalue(wrapper, extra_slot, {invoke = invoke})
+        debug.setupvalue(wrapper, extra_slot, { invoke = invoke })
     end
     return wrapper
 end
-
--- ===========================================================================
--- Master patch: install one init/update/paintTo/free on MosaicMenuItem
--- ===========================================================================
 
 local function patchMosaicMenuItem()
     local MosaicMenu = require("mosaicmenu")
@@ -1396,7 +1320,7 @@ local function patchMosaicMenuItem()
 
         if local_ImageWidget then
             local setupvalue_n = n
-            local StretchingImageWidget = local_ImageWidget:extend({})
+            local StretchingImageWidget = local_ImageWidget:extend {}
 
             StretchingImageWidget.init = function(self_img)
                 if local_ImageWidget.init then
@@ -1423,36 +1347,23 @@ local function patchMosaicMenuItem()
             end
 
             debug.setupvalue(TRUE_ORIG_UPDATE, setupvalue_n, StretchingImageWidget)
-            logger.info("VisualOverhaul: cover stretch swap installed")
         else
             logger.warn("VisualOverhaul: could not find ImageWidget upvalue for stretching")
         end
     end
 
-    MosaicMenuItem.init = preserveUpvalues(TRUE_ORIG_INIT, function(self, ...)
-        TRUE_ORIG_INIT(self)
-        if not masterEnabled() then
-            return
-        end
-        local c = getCfg()
-
-        if self.width and self.height then
+    MosaicMenuItem.init = preserveUpvalues(TRUE_ORIG_INIT, function(self)
+        local enabled = masterEnabled()
+        if enabled and self.width and self.height then
             local border_size = Size.border.thin
             MAX_IMG_W = self.width - 2 * border_size
             MAX_IMG_H = self.height - 2 * border_size
-
-            if c.folder_covers.enabled then
-                local rcfg = c.cover_aspect_ratio
-                local ratio = rcfg.fill and (MAX_IMG_W / MAX_IMG_H) or (rcfg.ratio_w / rcfg.ratio_h)
-                if MAX_IMG_W / MAX_IMG_H > ratio then
-                    FOLDER_ADJ_H = MAX_IMG_H
-                    FOLDER_ADJ_W = math.floor(MAX_IMG_H * ratio)
-                else
-                    FOLDER_ADJ_W = MAX_IMG_W
-                    FOLDER_ADJ_H = math.floor(MAX_IMG_W / ratio)
-                end
-            end
         end
+        TRUE_ORIG_INIT(self)
+        if not enabled then
+            return
+        end
+        local c = getCfg()
 
         if self.is_directory or self.file_deleted then
             return
@@ -1463,7 +1374,7 @@ local function patchMosaicMenuItem()
         end
     end)
 
-    MosaicMenuItem.update = preserveUpvalues(TRUE_ORIG_UPDATE, function(self, ...)
+    MosaicMenuItem.update = preserveUpvalues(TRUE_ORIG_UPDATE, function(self)
         TRUE_ORIG_UPDATE(self)
         if not masterEnabled() then
             return
@@ -1474,7 +1385,7 @@ local function patchMosaicMenuItem()
         end
     end)
 
-    MosaicMenuItem.paintTo = preserveUpvalues(TRUE_ORIG_PAINTTO, function(self, bb, x, y, ...)
+    MosaicMenuItem.paintTo = preserveUpvalues(TRUE_ORIG_PAINTTO, function(self, bb, x, y)
         local cb_enabled = masterEnabled()
         local star_enabled = collectionStarEnabled()
 
@@ -1512,14 +1423,10 @@ local function patchMosaicMenuItem()
         end
         local c = getCfg()
 
-        -- CoverBrowser enhancements are off, but the (independent)
-        -- collection-star toggle is on: just draw the star over the plain
-        -- cover. getCfg() is safe here (coverbrowser table is always
-        -- deep-filled in init()).
         if not cb_enabled then
             paintToOrig(bb, x, y)
             if star_enabled then
-                paintCollectionStar(bb, x, y, self)
+                paintCollectionStar(bb, self)
             end
             return
         end
@@ -1527,8 +1434,7 @@ local function patchMosaicMenuItem()
         if c.progress_bar.hide_native then
             local ProgressWidget = require("ui/widget/progresswidget")
             local orig_pw_paint = ProgressWidget.paintTo
-            ProgressWidget.paintTo = function()
-            end
+            ProgressWidget.paintTo = function() end
             paintToOrig(bb, x, y)
             ProgressWidget.paintTo = orig_pw_paint
         else
@@ -1554,11 +1460,11 @@ local function patchMosaicMenuItem()
         end
 
         if c.rounded_corners.enabled then
-            paintRoundedCorners(bb, target, x, y, self)
+            paintRoundedCorners(bb, target, x, y, self, c)
         end
 
         if c.series_indicator.style == "badge" and self.has_series_badge and self.series_badge then
-            paintSeriesBadge(self, bb, x, y)
+            paintSeriesBadge(self, bb)
         elseif c.series_indicator.style == "bar" then
             local bookinfo = BookInfoManager:getBookInfo(self.filepath, self.do_cover_image)
             if bookinfo and bookinfo.series then
@@ -1583,31 +1489,25 @@ local function patchMosaicMenuItem()
         end
 
         if c.status_icons.enabled then
-            paintStatusIconsOverlay(bb, x, y, self)
+            paintStatusIconsOverlay(bb, x, y, self, c)
         end
 
         if star_enabled then
-            paintCollectionStar(bb, x, y, self)
+            paintCollectionStar(bb, self)
         end
     end)
 
-    MosaicMenuItem.free = preserveUpvalues(TRUE_ORIG_FREE, function(self, ...)
-        if masterEnabled() then
-            if self._series_text then
-                self._series_text:free(true)
-                self._series_text = nil
-            end
-            if self.series_badge then
-                self.series_badge:free(true)
-                self.series_badge = nil
-            end
-            self._series_badge_background_rgb = nil
-            self._series_badge_border_rgb = nil
-            self._series_badge_border = nil
-            self._series_badge_radius = nil
-            self.series_index = nil
-            self.has_series_badge = nil
+    MosaicMenuItem.free = preserveUpvalues(TRUE_ORIG_FREE, function(self)
+        if self.series_badge then
+            self.series_badge:free(true)
+            self.series_badge = nil
         end
+        self._series_badge_background_rgb = nil
+        self._series_badge_border_rgb = nil
+        self._series_badge_border = nil
+        self._series_badge_radius = nil
+        self.series_index = nil
+        self.has_series_badge = nil
         if TRUE_ORIG_FREE then
             TRUE_ORIG_FREE(self)
         end
@@ -1616,19 +1516,9 @@ local function patchMosaicMenuItem()
     installIconAlphaOverride()
     installDescriptionHintOverride()
     installFileChooserCache()
-
-    logger.info("VisualOverhaul: MosaicMenuItem patched")
 end
 
--- ===========================================================================
--- Plugin-facing class
--- ===========================================================================
-
-local CoverBrowserModule = {
-    name = "coverbrowser",
-    plugin = nil,
-    settings = nil
-}
+local CoverBrowserModule = { name = "coverbrowser" }
 
 function CoverBrowserModule:new(o)
     o = o or {}
@@ -1638,39 +1528,27 @@ function CoverBrowserModule:new(o)
 end
 
 function CoverBrowserModule:init()
-    logger.info("CoverBrowserModule: Initializing")
-
     SETTINGS_MANAGER = self.settings
-    SETTINGS_MANAGER.settings.coverbrowser = SETTINGS_MANAGER.settings.coverbrowser or {}
-    deepFill(SETTINGS_MANAGER.settings.coverbrowser, DEFAULTS)
-    SETTINGS_MANAGER.settings.collection_star = SETTINGS_MANAGER.settings.collection_star or {}
-    deepFill(SETTINGS_MANAGER.settings.collection_star, COLLECTION_STAR_DEFAULTS)
-
     patchMosaicMenuItem()
     installHidePaginationOverride()
 end
 
--- patchMosaicMenuItem() is idempotent and every feature reads settings
--- live, so there is nothing to re-patch here. main.lua's refresh() already
--- calls file_chooser:updateItems()/setDirty to force the next repaint to
--- pick up whatever changed.
+-- Hooks are process-wide and installed idempotently. Reinitialization clears
+-- plugin caches and updates retained pagination state before the UI rebuild.
 function CoverBrowserModule:reinit()
-    logger.info("CoverBrowserModule: Reinitializing")
+    clearRoundedCornerCache()
+    clearPercentBadgeCache()
     local FileManager = require("apps/filemanager/filemanager")
     local fm = FileManager.instance
     if fm then
-        vosSetPaginationHidden(fm, hidePaginationEnabled())
         if fm.file_chooser then
             vosSetPaginationHidden(fm.file_chooser, hidePaginationEnabled())
-            fm.file_chooser:updateItems()
+            fm.file_chooser._vos_list_item_cache = nil
         end
     end
     for _, widget in ipairs(UIManager._window_stack) do
         if widget._vos_pagination_ready then
             vosSetPaginationHidden(widget, hidePaginationEnabled())
-        end
-        if widget.updateItems then
-            widget:updateItems()
         end
     end
 end
