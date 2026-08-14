@@ -21,6 +21,10 @@ function PageNumberSubtitles:cfg()
     return self.settings.settings.extras.page_subtitles
 end
 
+function PageNumberSubtitles:isEnabled()
+    return self.settings:isMasterEnabled()
+end
+
 local function pageText(menu)
     if not menu or not menu.page_num or menu.page_num == 0 then
         return ""
@@ -32,12 +36,16 @@ function PageNumberSubtitles:updateFileManagerSubtitle(manager, path)
     if not (manager and manager.title_bar and manager.file_chooser) then
         return
     end
+    path = manager.file_chooser.path or path or filemanagerutil.getDefaultDir()
+    if not self:isEnabled() then
+        manager:updateTitleBarPath(path)
+        return
+    end
     local titlebar_cfg = self.settings.settings.extras.filemanager_titlebar
     if titlebar_cfg and titlebar_cfg.enabled and not titlebar_cfg.show_path then
         manager.title_bar:setSubTitle("")
         return
     end
-    path = manager.file_chooser.path or path or filemanagerutil.getDefaultDir()
     local cfg = self:cfg()
     if not cfg.filemanager then
         local label = BD.directory(filemanagerutil.abbreviate(path))
@@ -67,7 +75,7 @@ local function updatePathChooserSubtitle(chooser)
         return
     end
     local path = BD.directory(filemanagerutil.abbreviate(chooser.path or ""))
-    local pages = module:cfg().pathchooser and pageText(chooser) or ""
+    local pages = module:isEnabled() and module:cfg().pathchooser and pageText(chooser) or ""
     chooser.title_bar:setSubTitle(pages ~= "" and path .. " (" .. pages .. ")" or path, true)
 end
 
@@ -92,13 +100,16 @@ local function installListSubtitle(owner, expected_name, key)
     function menu:updatePageInfo(...)
         local result = orig_updatePageInfo(self, ...)
         local module = PageNumberSubtitles.instance
-        local subtitle = module and module:cfg()[key] and pageText(self) or self._vos_base_subtitle
+        local subtitle = module and module:isEnabled() and module:cfg()[key] and pageText(self)
+            or self._vos_base_subtitle
         self.title_bar:setSubTitle(subtitle, true)
         return result
     end
     local module = PageNumberSubtitles.instance
-    if module and module:cfg()[key] then
+    if module and module:isEnabled() and module:cfg()[key] then
         menu.title_bar:setSubTitle(pageText(menu), true)
+    else
+        menu.title_bar:setSubTitle(menu._vos_base_subtitle, true)
     end
 end
 
@@ -203,6 +214,30 @@ function PageNumberSubtitles:init()
             local result = orig_onShowColl(self, ...)
             installListSubtitle(self, "collections", "collections")
             return result
+        end
+    end
+end
+
+function PageNumberSubtitles:reinit()
+    local manager = FileManager.instance
+    if manager then
+        self:updateFileManagerSubtitle(manager)
+        installListSubtitle(manager.history, "history", "history")
+        installListSubtitle(manager.collections, "collections", "collections")
+    end
+    local UIManager = require("ui/uimanager")
+    for _, window in ipairs(UIManager._window_stack) do
+        local widget = window.widget or window
+        if widget.patched_vos_page_subtitle_instance then
+            if widget._vos_base_subtitle ~= nil and widget.title_bar then
+                local key = widget.name == "history" and "history" or "collections"
+                local subtitle = self:isEnabled() and self:cfg()[key] and pageText(widget)
+                    or widget._vos_base_subtitle
+                widget.title_bar:setSubTitle(subtitle, true)
+            elseif widget.title_bar and widget.path then
+                updatePathChooserSubtitle(widget)
+            end
+            UIManager:setDirty(widget, "ui")
         end
     end
 end

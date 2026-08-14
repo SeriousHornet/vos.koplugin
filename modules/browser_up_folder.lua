@@ -15,6 +15,10 @@ function BrowserUpFolder:cfg()
     return self.settings.settings.extras
 end
 
+function BrowserUpFolder:isEnabled()
+    return self.settings:isMasterEnabled()
+end
+
 local function changeLeftIcon(chooser, icon, callback)
     local titlebar = chooser.title_bar
     if not titlebar then
@@ -44,6 +48,14 @@ local function isEmptyDir(chooser, item)
     return true
 end
 
+local function restoreLeftIcon(chooser)
+    if chooser._vos_back_icon_applied then
+        changeLeftIcon(chooser, chooser._vos_home_icon, chooser._vos_home_callback)
+        chooser._vos_back_icon_applied = false
+        chooser._vos_back_callback = nil
+    end
+end
+
 function BrowserUpFolder:init()
     BrowserUpFolder.instance = self
     if FileChooser.patched_vos_browser_folders then
@@ -55,6 +67,10 @@ function BrowserUpFolder:init()
         local item_table = orig_genItemTable(self, dirs, files, path)
         local module = BrowserUpFolder.instance
         if not module or self._dummy or self.name ~= "filemanager" then
+            return item_table
+        end
+        if not module:isEnabled() then
+            restoreLeftIcon(self)
             return item_table
         end
 
@@ -76,14 +92,19 @@ function BrowserUpFolder:init()
             return
         end
 
-        self._vos_home_callback = self._vos_home_callback or (self.title_bar and self.title_bar.left_icon_tap_callback)
+        if not self._vos_back_icon_applied and self.title_bar then
+            self._vos_home_icon = self.title_bar.left_icon
+            self._vos_home_callback = self.title_bar.left_icon_tap_callback
+        end
         if cfg.hide_up_folder and is_sub_folder then
             local icon = BD.mirroredUILayout() and "back.top.rtl" or "back.top"
-            changeLeftIcon(self, icon, function()
+            self._vos_back_callback = function()
                 self:onFolderUp()
-            end)
-        elseif self._vos_home_callback then
-            changeLeftIcon(self, "home", self._vos_home_callback)
+            end
+            changeLeftIcon(self, icon, self._vos_back_callback)
+            self._vos_back_icon_applied = true
+        else
+            restoreLeftIcon(self)
         end
         return items
     end

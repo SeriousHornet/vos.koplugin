@@ -35,33 +35,30 @@ local function getCfg()
     return SETTINGS_MANAGER.settings.coverbrowser
 end
 
--- Master kill-switch: mirrors enabled_modules.coverbrowser in settings.lua.
--- Every patch below checks it live, so toggling it off stops all CoverBrowser
--- rendering without needing to uninstall the (idempotent) patches.
 local function masterEnabled()
-    return SETTINGS_MANAGER
-        and SETTINGS_MANAGER.settings
-        and SETTINGS_MANAGER.settings.enabled_modules
-        and SETTINGS_MANAGER.settings.enabled_modules.coverbrowser == true
+    return SETTINGS_MANAGER and SETTINGS_MANAGER:isMasterEnabled()
 end
 
 -- These gates remain live because process-wide hooks cannot be uninstalled.
 local function hidePaginationEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.hide_pagination == true
 end
 
 local function collectionStarEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.collection_star == true
 end
 
 local function hideNativeCollectionStarEnabled()
-    return SETTINGS_MANAGER
+    return masterEnabled()
+        and SETTINGS_MANAGER
         and SETTINGS_MANAGER.settings
         and SETTINGS_MANAGER.settings.enabled_modules
         and SETTINGS_MANAGER.settings.enabled_modules.hide_collection_star == true
@@ -1501,18 +1498,16 @@ local function patchMosaicMenuItem()
     end)
 
     MosaicMenuItem.free = preserveUpvalues(TRUE_ORIG_FREE, function(self)
-        if masterEnabled() then
-            if self.series_badge then
-                self.series_badge:free(true)
-                self.series_badge = nil
-            end
-            self._series_badge_background_rgb = nil
-            self._series_badge_border_rgb = nil
-            self._series_badge_border = nil
-            self._series_badge_radius = nil
-            self.series_index = nil
-            self.has_series_badge = nil
+        if self.series_badge then
+            self.series_badge:free(true)
+            self.series_badge = nil
         end
+        self._series_badge_background_rgb = nil
+        self._series_badge_border_rgb = nil
+        self._series_badge_border = nil
+        self._series_badge_radius = nil
+        self.series_index = nil
+        self.has_series_badge = nil
         if TRUE_ORIG_FREE then
             TRUE_ORIG_FREE(self)
         end

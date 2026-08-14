@@ -223,6 +223,11 @@ function SettingsManager:load()
     self:init()
     local ok, saved = pcall(dofile, self.settings_file)
     if ok and type(saved) == "table" then
+        if saved.enabled == nil then
+            saved.enabled = not (saved.enabled_modules and saved.enabled_modules.coverbrowser == false)
+            saved.enabled_modules = saved.enabled_modules or {}
+            saved.enabled_modules.coverbrowser = true
+        end
         local had_quick_settings = saved.extras and saved.extras.quick_settings
         local had_filemanager_titlebar = saved.extras and saved.extras.filemanager_titlebar
         local pages_badge = saved.coverbrowser and saved.coverbrowser.pages_badge
@@ -267,6 +272,7 @@ end
 
 function SettingsManager:loadDefaults()
     self.settings = {
+        enabled = true,
         enabled_modules = {
             navbar = true,
             coverbrowser = true,
@@ -575,6 +581,10 @@ function SettingsManager:isEnabled(module)
     return self.settings.enabled_modules[module] == true
 end
 
+function SettingsManager:isMasterEnabled()
+    return self.settings.enabled == true
+end
+
 function SettingsManager:setEnabled(module, enabled)
     self.settings.enabled_modules[module] = enabled
     self:save()
@@ -585,14 +595,24 @@ function SettingsManager:getMainMenu(plugin)
 
     return groupFeatureMenuItems {
         {
-            text = _("Enable cover enhancements & badges"),
-            checked_func = function()
-                return self_ref:isEnabled("coverbrowser")
+            text_func = function()
+                if self_ref:isMasterEnabled() then
+                    return _("Visual Overhaul Suite (VOS) - On")
+                end
+                return _("Visual Overhaul Suite (VOS) - Off")
             end,
-            callback = function()
-                self_ref:setEnabled("coverbrowser", not self_ref:isEnabled("coverbrowser"))
+            checked_func = function()
+                return self_ref:isMasterEnabled()
+            end,
+            separator = true,
+            callback = function(touchmenu_instance)
+                self_ref.settings.enabled = not self_ref:isMasterEnabled()
+                self_ref:save()
                 if plugin then
                     plugin:refresh()
+                end
+                if touchmenu_instance then
+                    touchmenu_instance:updateItems()
                 end
             end,
         },
@@ -602,16 +622,10 @@ function SettingsManager:getMainMenu(plugin)
         },
         {
             text = _("Cover enhancements"),
-            enabled_func = function()
-                return self_ref:isEnabled("coverbrowser")
-            end,
             sub_item_table = self:getCoverEnhancementsMenu(plugin),
         },
         {
             text = _("Badges"),
-            enabled_func = function()
-                return self_ref:isEnabled("coverbrowser")
-            end,
             sub_item_table = self:getBadgesMenu(plugin),
         },
         {

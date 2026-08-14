@@ -18,10 +18,20 @@ function MenuSizeModule:new(o)
 end
 
 function MenuSizeModule:isEnabled()
+    return self.settings:isMasterEnabled() and self:isConfigured()
+end
+
+function MenuSizeModule:isConfigured()
     return self.settings.settings.extras.auto_menu_size == true
 end
 
 function MenuSizeModule:init()
+    self:reinit()
+end
+
+function MenuSizeModule:reinit()
+    TouchMenu.max_per_page_default = self.original_touch_max
+    Menu.items_per_page_default = self.original_menu_max
     if not self:isEnabled() then
         return
     end
@@ -39,12 +49,13 @@ function MenuSizeModule:getMenuItem()
     return {
         text = _("Auto Menu Sizing"),
         checked_func = function()
-            return self:isEnabled()
+            return self:isConfigured()
         end,
         callback = function()
-            self.settings.settings.extras.auto_menu_size = not self:isEnabled()
+            self.settings.settings.extras.auto_menu_size = not self:isConfigured()
             self.settings:save()
-            UIManager:askForRestart(_("Restart to apply the menu size change"))
+            self:reinit()
+            UIManager:askForRestart(_("Restart to fully apply the menu size change"))
         end,
     }
 end

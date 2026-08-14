@@ -47,26 +47,17 @@ function VisualOverhaul:init()
         module:init()
     end
 
-    if self.settings:isEnabled("navbar") then
-        self.navbar = NavbarModule:new {
-            plugin = self,
-            settings = self.settings,
-        }
-        self.navbar:init()
-    end
+    self.navbar = NavbarModule:new {
+        plugin = self,
+        settings = self.settings,
+    }
+    self.navbar:init()
 
-    if
-        self.settings:isEnabled("coverbrowser")
-        or self.settings:isEnabled("hide_pagination")
-        or self.settings:isEnabled("collection_star")
-        or self.settings:isEnabled("hide_collection_star")
-    then
-        self.coverbrowser = CoverBrowserModule:new {
-            plugin = self,
-            settings = self.settings,
-        }
-        self.coverbrowser:init()
-    end
+    self.coverbrowser = CoverBrowserModule:new {
+        plugin = self,
+        settings = self.settings,
+    }
+    self.coverbrowser:init()
 
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
@@ -89,34 +80,11 @@ function VisualOverhaul:refresh()
         end
     end
 
-    if self.settings:isEnabled("navbar") then
-        if not self.navbar then
-            self.navbar = NavbarModule:new {
-                plugin = self,
-                settings = self.settings,
-            }
-            self.navbar:init()
-        else
-            self.navbar:reinit()
-        end
-    elseif self.navbar then
+    if self.navbar then
         self.navbar:reinit()
     end
 
-    if
-        self.coverbrowser
-        or self.settings:isEnabled("coverbrowser")
-        or self.settings:isEnabled("hide_pagination")
-        or self.settings:isEnabled("collection_star")
-        or self.settings:isEnabled("hide_collection_star")
-    then
-        if not self.coverbrowser then
-            self.coverbrowser = CoverBrowserModule:new {
-                plugin = self,
-                settings = self.settings,
-            }
-            self.coverbrowser:init()
-        end
+    if self.coverbrowser then
         self.coverbrowser:reinit()
     end
 

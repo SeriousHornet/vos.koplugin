@@ -94,7 +94,7 @@ function QuickSettings:cfg()
 end
 
 function QuickSettings:isEnabled()
-    return self:cfg().enabled == true
+    return self.settings:isMasterEnabled() and self:cfg().enabled == true
 end
 
 local function currentUI()
@@ -483,6 +483,10 @@ function QuickSettings:createPanel(menu)
 end
 
 local function handleGesture(menu, gesture)
+    local module = QuickSettings.instance
+    if not (module and module:isEnabled()) then
+        return false
+    end
     local refs = menu._vos_quick_settings_refs
     if not refs then
         return false
@@ -531,7 +535,10 @@ function QuickSettings:patchTouchMenu()
     end
     local orig_updateItems = TouchMenu.updateItems
     function TouchMenu:updateItems(target_page, target_item_id)
-        if not (self.item_table and self.item_table.panel and self.item_table.vos_quick_settings) then
+        local module = QuickSettings.instance
+        if not (module and module:isEnabled())
+            or not (self.item_table and self.item_table.panel and self.item_table.vos_quick_settings)
+        then
             self._vos_quick_settings_refs = nil
             return orig_updateItems(self, target_page, target_item_id)
         end
@@ -566,14 +573,20 @@ function QuickSettings:patchTouchMenu()
     end
     local orig_onTapCloseAllMenus = TouchMenu.onTapCloseAllMenus
     function TouchMenu:onTapCloseAllMenus(arg, gesture)
-        if self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture) then
+        local module = QuickSettings.instance
+        if module and module:isEnabled()
+            and self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture)
+        then
             return true
         end
         return orig_onTapCloseAllMenus(self, arg, gesture)
     end
     local orig_onSwipe = TouchMenu.onSwipe
     function TouchMenu:onSwipe(arg, gesture)
-        if self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture) then
+        local module = QuickSettings.instance
+        if module and module:isEnabled()
+            and self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture)
+        then
             return true
         end
         return orig_onSwipe and orig_onSwipe(self, arg, gesture)
@@ -587,7 +600,8 @@ function QuickSettings:patchIcons()
     IconWidget.patched_vos_quick_settings = true
     local orig_new = IconWidget.new
     function IconWidget:new(options)
-        if options and not options.file and quick_icons[options.icon] then
+        local module = QuickSettings.instance
+        if module and module:isEnabled() and options and not options.file and quick_icons[options.icon] then
             local file = vosicons.iconFile(options.icon)
             if file then
                 options.file = file
@@ -595,6 +609,36 @@ function QuickSettings:patchIcons()
             end
         end
         return orig_new(self, options)
+    end
+end
+
+local function removeQuickSettingsTab(menu)
+    if not menu then
+        return
+    end
+    local tabs = menu.tab_item_table or {}
+    for index = #tabs, 1, -1 do
+        if tabs[index].vos_quick_settings then
+            table.remove(tabs, index)
+        end
+    end
+    menu._vos_quick_settings_refs = nil
+end
+
+function QuickSettings:syncMenu(menu)
+    if not menu then
+        return
+    end
+    removeQuickSettingsTab(menu)
+    if self:isEnabled() and menu.tab_item_table then
+        table.insert(menu.tab_item_table, 1, {
+            icon = "quicksettings",
+            remember = false,
+            vos_quick_settings = true,
+            panel = function(touch_menu)
+                return QuickSettings.instance:createPanel(touch_menu)
+            end,
+        })
     end
 end
 
@@ -635,6 +679,30 @@ function QuickSettings:init()
     self:patchIcons()
     self:patchTouchMenu()
     self:patchMenus()
+end
+
+function QuickSettings:reinit()
+    local FileManager = require("apps/filemanager/filemanager")
+    local ReaderUI = require("apps/reader/readerui")
+    local owners = {
+        FileManager.instance and FileManager.instance.menu,
+        ReaderUI.instance and ReaderUI.instance.menu,
+    }
+    for _, owner in pairs(owners) do
+        self:syncMenu(owner)
+        local touch_menu = owner and owner.menu_container and owner.menu_container[1]
+        if touch_menu then
+            local showing_quick_settings = touch_menu.item_table and touch_menu.item_table.vos_quick_settings
+            if self:isEnabled() and owner and owner.tab_item_table then
+                touch_menu.tab_item_table = owner.tab_item_table
+            else
+                removeQuickSettingsTab(touch_menu)
+                if showing_quick_settings and touch_menu.tab_item_table[1] then
+                    touch_menu:switchMenuTab(1)
+                end
+            end
+        end
+    end
 end
 
 function QuickSettings:getMenuItem()

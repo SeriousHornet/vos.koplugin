@@ -39,7 +39,7 @@ function MenuTextOverrides:init()
     Menu.getMenuText = function(item)
         local text = orig_getMenuText(item)
         local module = MenuTextOverrides.instance
-        if not text or not module then
+        if not text or not module or not module.settings:isMasterEnabled() then
             return text
         end
         return MenuTextOverrides.cleanText(text, module:cfg())

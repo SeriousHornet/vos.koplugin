@@ -12,6 +12,10 @@ function BrowserHideUnderline:new(o)
 end
 
 function BrowserHideUnderline:isEnabled()
+    return self.settings:isMasterEnabled() and self:isConfigured()
+end
+
+function BrowserHideUnderline:isConfigured()
     return self.settings.settings.extras.hide_last_visited_underline == true
 end
 
@@ -38,10 +42,10 @@ function BrowserHideUnderline:getMenuItem()
     return {
         text = _("Hide last visited underline"),
         checked_func = function()
-            return self:isEnabled()
+            return self:isConfigured()
         end,
         callback = function()
-            self.settings.settings.extras.hide_last_visited_underline = not self:isEnabled()
+            self.settings.settings.extras.hide_last_visited_underline = not self:isConfigured()
             self.settings:save()
             if self.plugin then
                 self.plugin:refresh()

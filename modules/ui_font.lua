@@ -56,15 +56,21 @@ function UIFontModule:init()
     table.sort(self.font_list)
 
     self.replacements = {}
+    self.original_fontmap = {}
     for key, path in pairs(Font.fontmap) do
         if path == self.regular_default then
             self.replacements[key] = "regular"
+            self.original_fontmap[key] = path
         elseif path == self.bold_default then
             self.replacements[key] = "bold"
+            self.original_fontmap[key] = path
         end
     end
+    local TouchMenu = require("ui/widget/touchmenu")
+    self.original_touchmenu_fface = TouchMenu.fface
+    self.item_font_overrides = setmetatable({}, { __mode = "k" })
     self:patchTouchMenuItems()
-    self:apply()
+    self:reinit()
 end
 
 function UIFontModule:patchTouchMenuItems()
@@ -78,12 +84,21 @@ function UIFontModule:patchTouchMenuItems()
         local module = UIFontModule.instance
         if module and self.item_table then
             for _, item in ipairs(self.item_table) do
-                if not item.font_func and not item._vos_ui_font then
-                    item._vos_ui_font = true
-                    item.font_func = function(size)
-                        local current = UIFontModule.instance
-                        return current and current:getFace(size)
+                local override = module.item_font_overrides[item]
+                if not module.settings:isMasterEnabled() then
+                    if override and item.font_func == override.value then
+                        item.font_func = override.original
                     end
+                    module.item_font_overrides[item] = nil
+                elseif not override and not item.font_func then
+                    local font_func = function(size)
+                        local current = UIFontModule.instance
+                        if current and current.settings:isMasterEnabled() then
+                            return current:getFace(size)
+                        end
+                    end
+                    module.item_font_overrides[item] = { original = item.font_func, value = font_func }
+                    item.font_func = font_func
                 end
             end
         end
@@ -100,6 +115,9 @@ function UIFontModule:getFace(size, bold)
 end
 
 function UIFontModule:apply()
+    if not self.settings:isMasterEnabled() then
+        return
+    end
     local name = self:getSetting()
     local selected = self.fonts[name] or self.fonts[self.default_name]
     if not selected then
@@ -109,11 +127,40 @@ function UIFontModule:apply()
         self:setSetting(self.default_name)
     end
     for key, font_type in pairs(self.replacements) do
-        Font.fontmap[key] = selected[font_type]
+        local value = selected[font_type]
+        Font.fontmap[key] = value
+        self.applied_fontmap[key] = value
     end
 
     local TouchMenu = require("ui/widget/touchmenu")
     TouchMenu.fface = Font:getFace("ffont")
+    self.applied_touchmenu_fface = TouchMenu.fface
+end
+
+function UIFontModule:restore()
+    for item, override in pairs(self.item_font_overrides) do
+        if item.font_func == override.value then
+            item.font_func = override.original
+        end
+        self.item_font_overrides[item] = nil
+    end
+    for key, original in pairs(self.original_fontmap) do
+        if self.applied_fontmap[key] ~= nil and Font.fontmap[key] == self.applied_fontmap[key] then
+            Font.fontmap[key] = original
+        end
+    end
+    local TouchMenu = require("ui/widget/touchmenu")
+    if self.applied_touchmenu_fface ~= nil and TouchMenu.fface == self.applied_touchmenu_fface then
+        TouchMenu.fface = self.original_touchmenu_fface
+    end
+    self.applied_fontmap = {}
+    self.applied_touchmenu_fface = nil
+end
+
+function UIFontModule:reinit()
+    self.applied_fontmap = self.applied_fontmap or {}
+    self:restore()
+    self:apply()
 end
 
 function UIFontModule:getMenuItem()

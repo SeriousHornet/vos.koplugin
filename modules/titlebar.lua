@@ -47,7 +47,7 @@ function FileManagerTitleBar:cfg()
 end
 
 function FileManagerTitleBar:isEnabled()
-    return self:cfg().enabled == true
+    return self.settings:isMasterEnabled() and self:cfg().enabled == true
 end
 
 local function getSystemStat(manager)
@@ -157,7 +157,21 @@ function FileManagerTitleBar:update(manager)
     end
     UIManager:unschedule(manager.updateVOSTitleBar)
     if not self:isEnabled() then
+        local default_face = manager.title_bar.fullscreen and manager.title_bar.title_face_fullscreen
+            or manager.title_bar.title_face_not_fullscreen
+        if manager.title_bar.title_face ~= default_face then
+            manager.title_bar.title_face = default_face
+            manager.title_bar:clear()
+            manager.title_bar:init()
+        end
+        manager._vos_titlebar_bold = nil
         manager.title_bar:setTitle(manager.title or "")
+        if manager.updateTitleBarPath then
+            local path = manager.file_chooser and manager.file_chooser.path
+            if path then
+                manager:updateTitleBarPath(path)
+            end
+        end
         return
     end
     local cfg = self:cfg()

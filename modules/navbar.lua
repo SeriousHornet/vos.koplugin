@@ -54,12 +54,15 @@ local function cfg()
 end
 
 local function navbarEnabled()
-    return SETTINGS_MANAGER ~= nil and SETTINGS_MANAGER:isEnabled("navbar")
+    return SETTINGS_MANAGER ~= nil
+        and SETTINGS_MANAGER:isMasterEnabled()
+        and SETTINGS_MANAGER:isEnabled("navbar")
 end
 
 local active_tab = "books"
 local GLOBAL_PATCHED = false
 local qrss_hooked = false
+local standalone_views = setmetatable({}, { __mode = "k" })
 
 local navbar_icon_size
 local navbar_font
@@ -185,6 +188,9 @@ local createNavBar
 local getTabCallback
 
 local function setActiveTab(tab_id)
+    if not navbarEnabled() then
+        return
+    end
     if active_tab == tab_id then
         return
     end
@@ -871,6 +877,9 @@ createNavBar = function()
     }
 
     navbar.onTapNavBar = function(self, _, ges)
+        if not navbarEnabled() then
+            return false
+        end
         if not self.dimen or not self.dimen:contains(ges.pos) then
             return false
         end
@@ -1018,12 +1027,39 @@ local function uninjectNavbar(fm)
     end
 end
 
+local function uninjectStandaloneNavbar(menu)
+    if not menu or not menu._vos_navbar_original_child then
+        return
+    end
+    menu[1] = menu._vos_navbar_original_child
+    if menu._vos_navbar_original_child_height then
+        menu[1].height = menu._vos_navbar_original_child_height
+        menu._vos_navbar_original_child_height = nil
+    end
+    menu._vos_navbar_original_child = nil
+    if menu._vos_navbar_original_height then
+        menu.height = menu._vos_navbar_original_height
+        if menu.dimen then
+            menu.dimen.h = menu._vos_navbar_original_height
+        end
+        menu._vos_navbar_original_height = nil
+    end
+    if menu._vos_navbar_borderless_captured then
+        menu.is_borderless = menu._vos_navbar_original_borderless
+        menu._vos_navbar_original_borderless = nil
+        menu._vos_navbar_borderless_captured = nil
+    end
+end
+
 injectStandaloneNavbar = function(menu, view_tab_id)
-    if not navbarEnabled() then
+    if not navbarEnabled() or not cfg().show_in_standalone then
         return
     end
     if not menu or not menu[1] then
         return
+    end
+    if menu._vos_navbar_original_child then
+        uninjectStandaloneNavbar(menu)
     end
 
     local saved_active = active_tab
@@ -1035,6 +1071,9 @@ injectStandaloneNavbar = function(menu, view_tab_id)
     end
 
     navbar.onTapNavBar = function(self_nb, _, ges)
+        if not navbarEnabled() then
+            return false
+        end
         if not self_nb.dimen or not self_nb.dimen:contains(ges.pos) then
             return false
         end
@@ -1073,6 +1112,12 @@ injectStandaloneNavbar = function(menu, view_tab_id)
         return true
     end
 
+    menu._vos_navbar_original_child = menu[1]
+    -- Menu.init was deliberately given the reduced height by our global hook;
+    -- the native layout to restore when disabled is the full screen.
+    menu._vos_navbar_original_height = Screen:getHeight()
+    menu._vos_navbar_tab_id = view_tab_id
+    standalone_views[menu] = true
     menu.dimen.h = Screen:getHeight()
 
     local FrameContainer = require("ui/widget/container/framecontainer")
@@ -1102,7 +1147,7 @@ hookQuickRSSInit = function()
     function QuickRSSUI_class:init()
         orig_qrss_init(self)
 
-        if not cfg().show_in_standalone then
+        if not navbarEnabled() or not cfg().show_in_standalone then
             return
         end
 
@@ -1111,7 +1156,10 @@ hookQuickRSSInit = function()
             return
         end
 
-        self[1].height = self[1].height - navbar_h
+        local original_child_height = self[1].height
+        local original_list_h = self.list_h
+        local original_items_per_page = self.items_per_page
+        self[1].height = original_child_height - navbar_h
         self.list_h = self.list_h - navbar_h
         if QRSS_ITEM_HEIGHT then
             self.items_per_page = math.max(1, math.floor(self.list_h / QRSS_ITEM_HEIGHT))
@@ -1126,6 +1174,9 @@ hookQuickRSSInit = function()
         end
 
         navbar.onTapNavBar = function(self_nb, _, ges)
+            if not navbarEnabled() then
+                return false
+            end
             if not self_nb.dimen or not self_nb.dimen:contains(ges.pos) then
                 return false
             end
@@ -1156,6 +1207,12 @@ hookQuickRSSInit = function()
         end
 
         local FrameContainer = require("ui/widget/container/framecontainer")
+        self._vos_navbar_original_child = self[1]
+        self._vos_navbar_original_child_height = original_child_height
+        self._vos_navbar_original_list_h = original_list_h
+        self._vos_navbar_original_items_per_page = original_items_per_page
+        self._vos_navbar_is_qrss = true
+        standalone_views[self] = true
         self[1] = FrameContainer:new {
             background = Blitbuffer.COLOR_WHITE,
             bordersize = 0,
@@ -1199,6 +1256,10 @@ local function installGlobalHooks()
             and isStandaloneNavbarView(self)
         then
             self.height = Screen:getHeight() - getNavbarHeight()
+            if not self._vos_navbar_borderless_captured then
+                self._vos_navbar_original_borderless = self.is_borderless
+                self._vos_navbar_borderless_captured = true
+            end
             if not self.is_borderless then
                 self.is_borderless = true
             end
@@ -1208,7 +1269,9 @@ local function installGlobalHooks()
         if nexttick_tab_id and navbarEnabled() and cfg().show_in_standalone then
             local menu = self
             UIManager:nextTick(function()
-                injectStandaloneNavbar(menu, nexttick_tab_id)
+                if navbarEnabled() and cfg().show_in_standalone then
+                    injectStandaloneNavbar(menu, nexttick_tab_id)
+                end
             end)
         end
     end
@@ -1219,6 +1282,9 @@ local function installGlobalHooks()
     function FileManager:onPathChanged(path)
         if orig_onPathChanged then
             orig_onPathChanged(self, path)
+        end
+        if not navbarEnabled() then
+            return
         end
 
         local function startsWith(str, prefix)
@@ -1268,8 +1334,10 @@ local function installGlobalHooks()
         self._navbar_injected = false
         local fm = self
         UIManager:nextTick(function()
-            injectNavbar(fm)
-            UIManager:setDirty(fm, "ui")
+            if navbarEnabled() then
+                injectNavbar(fm)
+                UIManager:setDirty(fm, "ui")
+            end
         end)
     end
 
@@ -1326,7 +1394,9 @@ function NavbarModule:init()
     self.fm = FileManager.instance
     if self.fm then
         UIManager:nextTick(function()
-            injectNavbar(self.fm)
+            if navbarEnabled() then
+                injectNavbar(self.fm)
+            end
         end)
     end
 end
@@ -1345,6 +1415,34 @@ function NavbarModule:reinit()
             uninjectNavbar(fm)
         end
         UIManager:setDirty(fm, "ui")
+    end
+    local standalone_enabled = navbarEnabled() and cfg().show_in_standalone
+    if not standalone_enabled then
+        for view in pairs(standalone_views) do
+            if view._vos_navbar_original_list_h then
+                view.list_h = view._vos_navbar_original_list_h
+                view._vos_navbar_original_list_h = nil
+            end
+            if view._vos_navbar_original_items_per_page then
+                view.items_per_page = view._vos_navbar_original_items_per_page
+                view._vos_navbar_original_items_per_page = nil
+            end
+            uninjectStandaloneNavbar(view)
+            if view._vos_navbar_is_qrss and view._populateItems and view.articles and #view.articles > 0 then
+                view:_populateItems()
+            end
+            UIManager:setDirty(view, "ui")
+        end
+    else
+        for view in pairs(standalone_views) do
+            if not view._vos_navbar_original_child
+                and not view._vos_navbar_is_qrss
+                and view._vos_navbar_tab_id
+            then
+                injectStandaloneNavbar(view, view._vos_navbar_tab_id)
+                UIManager:setDirty(view, "ui")
+            end
+        end
     end
 end
 
