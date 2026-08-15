@@ -496,6 +496,8 @@ function SettingsManager:loadDefaults()
             },
             percent_badge = {
                 enabled = true,
+                custom_icon_enabled = false,
+                custom_icon_name = "",
                 position = "top_right",
                 text_size = 0.5,
                 move_on_x = 5,
@@ -985,6 +987,65 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom left", value = "bottom_left" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
+                {
+                    text = _("Custom percent badge icon"),
+                    sub_item_table = groupFeatureMenuItems {
+                        checkboxItem(
+                            self,
+                            cb.percent_badge,
+                            "custom_icon_enabled",
+                            "Enable custom icon",
+                            plugin
+                        ),
+                        {
+                            text_func = function()
+                                if cb.percent_badge.custom_icon_name ~= "" then
+                                    return T(_("Icon name: %1"), cb.percent_badge.custom_icon_name)
+                                end
+                                return _("Icon name")
+                            end,
+                            callback = function(touchmenu)
+                                local dialog
+                                dialog = InputDialog:new {
+                                    title = _("Icon name"),
+                                    input = cb.percent_badge.custom_icon_name,
+                                    hint = T(
+                                        _("Place %1.svg or %1.png in %2, then enter %1 with or without the extension."),
+                                        "my_icon",
+                                        DataStorage:getDataDir() .. "/icons"
+                                    ),
+                                    buttons = {
+                                        {
+                                            {
+                                                text = _("Cancel"),
+                                                callback = function()
+                                                    UIManager:close(dialog)
+                                                end,
+                                            },
+                                            {
+                                                text = _("Set"),
+                                                is_enter_default = true,
+                                                callback = function()
+                                                    cb.percent_badge.custom_icon_name = dialog:getInputText() or ""
+                                                    self_ref:save()
+                                                    UIManager:close(dialog)
+                                                    if touchmenu then
+                                                        touchmenu:updateItems()
+                                                    end
+                                                    if plugin then
+                                                        plugin:refresh()
+                                                    end
+                                                end,
+                                            },
+                                        },
+                                    },
+                                }
+                                UIManager:show(dialog)
+                                dialog:onShowKeyboard()
+                            end,
+                        },
+                    },
+                },
                 numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 5 }),
                 numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, { min = -300, max = 300 }),

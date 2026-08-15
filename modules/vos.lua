@@ -401,22 +401,26 @@ end
 
 local percent_badge_cache = {}
 
-local function getPercentBadgeImage(width, height)
-    local key = width .. "x" .. height
+local function getPercentBadgeImage(file, width, height)
+    local key = file .. "|" .. width .. "x" .. height
     if percent_badge_cache[key] then
         return percent_badge_cache[key]
     end
 
-    local render_size = math.max(width, height)
-    local image, straight_alpha = RenderImage:renderSVGImageFile(
-        vosicons.iconFile("percent.badge"),
-        render_size,
-        render_size
-    )
+    local image, straight_alpha
+    if file:match("%.svg$") then
+        if width >= height then
+            image, straight_alpha = RenderImage:renderSVGImageFile(file, width)
+        else
+            image, straight_alpha = RenderImage:renderSVGImageFile(file, nil, height)
+        end
+    else
+        image = RenderImage:renderImageFile(file, false)
+    end
     if not image then
         return
     end
-    if width ~= render_size or height ~= render_size then
+    if image:getWidth() ~= width or image:getHeight() ~= height then
         image = RenderImage:scaleBlitBuffer(image, width, height)
     end
 
@@ -481,7 +485,13 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local fy = y + math.floor((self_widget.height - target.dimen.h) / 2)
     local fw, fh = target.dimen.w, target.dimen.h
 
-    local percent_badge = getPercentBadgeImage(BADGE_W, BADGE_H)
+    local default_badge_file = vosicons.iconFile("percent.badge")
+    local badge_file = pcfg.custom_icon_enabled and vosicons.userIconFile(pcfg.custom_icon_name)
+        or default_badge_file
+    local percent_badge = badge_file and getPercentBadgeImage(badge_file, BADGE_W, BADGE_H)
+    if not percent_badge and default_badge_file and badge_file ~= default_badge_file then
+        percent_badge = getPercentBadgeImage(default_badge_file, BADGE_W, BADGE_H)
+    end
     if not percent_badge then
         percent_widget:free()
         return

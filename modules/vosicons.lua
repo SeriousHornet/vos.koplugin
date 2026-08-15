@@ -4,6 +4,7 @@ resources/ folder, instead of relying on IconWidget's name resolution
 (which only finds icons copied into koreader's root icons/ dir).
 ]]
 
+local DataStorage = require("datastorage")
 local lfs = require("libs/libkoreader-lfs")
 
 -- This file lives at <plugin_root>/modules/, so walk up one level to find
@@ -11,6 +12,22 @@ local lfs = require("libs/libkoreader-lfs")
 local MODULE_DIR = debug.getinfo(1, "S").source:match("^@(.+[/\\])[^/\\]+$") or "./"
 local VOS_RESOURCE_DIR = (MODULE_DIR:match("^(.*)[/\\]modules[/\\]$") or MODULE_DIR:sub(1, -2)) .. "/resources/"
 local icon_files = {}
+
+local function userIconFile(name)
+    if not name or name == "" then
+        return
+    end
+    local base = DataStorage:getDataDir() .. "/icons/" .. name
+    if name:match("%.svg$") or name:match("%.png$") then
+        return lfs.attributes(base, "mode") == "file" and base or nil
+    end
+    for __, extension in ipairs { ".svg", ".png" } do
+        local path = base .. extension
+        if lfs.attributes(path, "mode") == "file" then
+            return path
+        end
+    end
+end
 
 -- Return the absolute path of <name>.svg inside resources/ if it exists,
 -- nil otherwise (so IconWidget falls back to name resolution / defaults).
@@ -49,6 +66,7 @@ end
 
 return {
     resourceDir = VOS_RESOURCE_DIR,
+    userIconFile = userIconFile,
     iconFile = iconFile,
     icon = icon,
 }

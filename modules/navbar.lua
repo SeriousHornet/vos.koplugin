@@ -4,7 +4,6 @@
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
-local DataStorage = require("datastorage")
 local Device = require("device")
 local Dispatcher = require("dispatcher")
 local Event = require("ui/event")
@@ -30,22 +29,6 @@ local VerticalGroup = require("ui/widget/verticalgroup")
 local VerticalSpan = require("ui/widget/verticalspan")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
-
-local function customIconFile(name)
-    if not name or name == "" then
-        return
-    end
-    local base = DataStorage:getDataDir() .. "/icons/" .. name
-    if name:match("%.svg$") or name:match("%.png$") then
-        return lfs.attributes(base, "mode") == "file" and base or nil
-    end
-    for _, extension in ipairs { ".svg", ".png" } do
-        local path = base .. extension
-        if lfs.attributes(path, "mode") == "file" then
-            return path
-        end
-    end
-end
 
 -- Global hooks always read the latest settings manager.
 local SETTINGS_MANAGER = nil
@@ -711,7 +694,7 @@ local function createTabWidget(tab, tab_w, is_active)
 
     -- Let KOReader resolve custom icons from <data>/icons. Built-in VOS tabs
     -- keep using the plugin resources so they do not require copied files.
-    local icon_file = tab.is_custom and customIconFile(tab.icon) or vosicons.iconFile(tab.icon)
+    local icon_file = tab.is_custom and vosicons.userIconFile(tab.icon) or vosicons.iconFile(tab.icon)
     local icon
     if active_color then
         icon = ColorIconWidget:new {
