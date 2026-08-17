@@ -154,6 +154,56 @@ local function numberItem(self, tree, key, text, plugin, opts)
     }
 end
 
+local function iconNameItem(self, tree, key, text, plugin)
+    return {
+        text_func = function()
+            if tree[key] ~= "" then
+                return T(_("%1: %2"), _(text), tree[key])
+            end
+            return _(text)
+        end,
+        callback = function(touchmenu)
+            local dialog
+            dialog = InputDialog:new {
+                title = _(text),
+                input = tree[key],
+                hint = T(
+                    _("Place %1.svg or %1.png in %2, then enter %1 with or without the extension."),
+                    "my_icon",
+                    DataStorage:getDataDir() .. "/icons"
+                ),
+                buttons = {
+                    {
+                        {
+                            text = _("Cancel"),
+                            callback = function()
+                                UIManager:close(dialog)
+                            end,
+                        },
+                        {
+                            text = _("Set"),
+                            is_enter_default = true,
+                            callback = function()
+                                tree[key] = dialog:getInputText() or ""
+                                self:save()
+                                UIManager:close(dialog)
+                                if touchmenu then
+                                    touchmenu:updateItems()
+                                end
+                                if plugin then
+                                    plugin:refresh()
+                                end
+                            end,
+                        },
+                    },
+                },
+            }
+            UIManager:show(dialog)
+            dialog:onShowKeyboard()
+        end,
+    }
+end
+
 local function colorItem(self, tree, key, text, plugin, opts)
     opts = opts or {}
     return {
@@ -521,6 +571,11 @@ function SettingsManager:loadDefaults()
             status_icons = {
                 enabled = true,
                 size = 24,
+                position = "bottom_right",
+                custom_icon_enabled = false,
+                reading_icon_name = "",
+                hold_icon_name = "",
+                finished_icon_name = "",
             },
             disable_description_hint = true,
             folder_covers = {
@@ -997,53 +1052,7 @@ function SettingsManager:getBadgesMenu(plugin)
                             "Enable custom icon",
                             plugin
                         ),
-                        {
-                            text_func = function()
-                                if cb.percent_badge.custom_icon_name ~= "" then
-                                    return T(_("Icon name: %1"), cb.percent_badge.custom_icon_name)
-                                end
-                                return _("Icon name")
-                            end,
-                            callback = function(touchmenu)
-                                local dialog
-                                dialog = InputDialog:new {
-                                    title = _("Icon name"),
-                                    input = cb.percent_badge.custom_icon_name,
-                                    hint = T(
-                                        _("Place %1.svg or %1.png in %2, then enter %1 with or without the extension."),
-                                        "my_icon",
-                                        DataStorage:getDataDir() .. "/icons"
-                                    ),
-                                    buttons = {
-                                        {
-                                            {
-                                                text = _("Cancel"),
-                                                callback = function()
-                                                    UIManager:close(dialog)
-                                                end,
-                                            },
-                                            {
-                                                text = _("Set"),
-                                                is_enter_default = true,
-                                                callback = function()
-                                                    cb.percent_badge.custom_icon_name = dialog:getInputText() or ""
-                                                    self_ref:save()
-                                                    UIManager:close(dialog)
-                                                    if touchmenu then
-                                                        touchmenu:updateItems()
-                                                    end
-                                                    if plugin then
-                                                        plugin:refresh()
-                                                    end
-                                                end,
-                                            },
-                                        },
-                                    },
-                                }
-                                UIManager:show(dialog)
-                                dialog:onShowKeyboard()
-                            end,
-                        },
+                        iconNameItem(self, cb.percent_badge, "custom_icon_name", "Icon name", plugin),
                     },
                 },
                 numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 5 }),
@@ -1123,8 +1132,33 @@ function SettingsManager:getBadgesMenu(plugin)
         },
         {
             text = _("Status icons"),
-            sub_item_table = {
+            sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.status_icons, "enabled", "Enable status icons", plugin),
+                choiceItem(self, cb.status_icons, "position", "Position", {
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top center", value = "top_center" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Center left", value = "center_left" },
+                    { label = "Center right", value = "center_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom center", value = "bottom_center" },
+                    { label = "Bottom right", value = "bottom_right" },
+                }, plugin),
+                {
+                    text = _("Custom status icons"),
+                    sub_item_table = groupFeatureMenuItems {
+                        checkboxItem(
+                            self,
+                            cb.status_icons,
+                            "custom_icon_enabled",
+                            "Enable custom icon",
+                            plugin
+                        ),
+                        iconNameItem(self, cb.status_icons, "reading_icon_name", "Reading icon name", plugin),
+                        iconNameItem(self, cb.status_icons, "hold_icon_name", "Hold icon name", plugin),
+                        iconNameItem(self, cb.status_icons, "finished_icon_name", "Finished icon name", plugin),
+                    },
+                },
                 numberItem(self, cb.status_icons, "size", "Size", plugin, { min = 8, max = 100 }),
             },
         },

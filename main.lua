@@ -23,11 +23,18 @@ local QuickSettingsModule = require("modules/quick_settings")
 local FileManagerTitleBar = require("modules/titlebar")
 
 local VisualOverhaul = WidgetContainer:extend {
-    name = "visualoverhaul",
+    name = "vos",
     is_doc_only = false,
 }
 
 function VisualOverhaul:init()
+    local plugins_disabled = G_reader_settings:readSetting("plugins_disabled") or {}
+    if plugins_disabled.visualoverhaul then
+        plugins_disabled.visualoverhaul = nil
+        plugins_disabled.vos = true
+        G_reader_settings:saveSetting("plugins_disabled", plugins_disabled)
+    end
+
     local heap_before = collectgarbage("count")
     self.settings = SettingsManager:new()
     self.settings:load()

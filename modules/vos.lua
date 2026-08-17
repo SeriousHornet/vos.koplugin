@@ -634,39 +634,50 @@ local function paintStatusIconsOverlay(bb, x, y, self_widget, c)
         return
     end
 
-    local corner_mark_size = Screen:scaleBySize(c.status_icons.size)
-    local ix, iy
-    if BD.mirroredUILayout() then
-        ix = math.floor((self_widget.width - target.dimen.w) / 2)
+    local scfg = c.status_icons
+    local corner_mark_size = Screen:scaleBySize(scfg.size)
+    local cover_x = x + math.floor((self_widget.width - target.dimen.w) / 2)
+    local cover_y = y + math.floor((self_widget.height - target.dimen.h) / 2)
+    local mark_x
+    if scfg.position:match("_left$") then
+        mark_x = cover_x
+    elseif scfg.position:match("_right$") then
+        mark_x = cover_x + target.dimen.w - corner_mark_size
     else
-        ix = self_widget.width - math.ceil((self_widget.width - target.dimen.w) / 2) - corner_mark_size
+        mark_x = cover_x + math.floor((target.dimen.w - corner_mark_size) / 2)
     end
-    iy = self_widget.height - math.ceil((self_widget.height - target.dimen.h) / 2) - corner_mark_size
+    local mark_y
+    if scfg.position:match("^top_") then
+        mark_y = cover_y
+    elseif scfg.position:match("^bottom_") then
+        mark_y = cover_y + target.dimen.h - corner_mark_size
+    else
+        mark_y = cover_y + math.floor((target.dimen.h - corner_mark_size) / 2)
+    end
 
-    local mark
+    local name, custom_name, rotation_angle
     if self_widget.status == "abandoned" then
-        local name = BD.mirroredUILayout() and "dogear.abandoned.rtl" or "dogear.abandoned"
-        mark = IconWidget:new(vosicons.icon(name, {
-            width = corner_mark_size,
-            height = corner_mark_size,
-        }))
+        name = BD.mirroredUILayout() and "dogear.abandoned.rtl" or "dogear.abandoned"
+        custom_name = scfg.hold_icon_name
     elseif self_widget.status == "complete" then
-        local name = BD.mirroredUILayout() and "dogear.complete.rtl" or "dogear.complete"
-        mark = IconWidget:new(vosicons.icon(name, {
-            width = corner_mark_size,
-            height = corner_mark_size,
-        }))
+        name = BD.mirroredUILayout() and "dogear.complete.rtl" or "dogear.complete"
+        custom_name = scfg.finished_icon_name
     else
-        mark = IconWidget:new(vosicons.icon("dogear.reading", {
-            rotation_angle = BD.mirroredUILayout() and 270 or 0,
-            width = corner_mark_size,
-            height = corner_mark_size,
-        }))
+        name = "dogear.reading"
+        custom_name = scfg.reading_icon_name
+        rotation_angle = BD.mirroredUILayout() and 270 or 0
     end
-    if mark then
-        mark:paintTo(bb, x + ix, y + iy)
-        mark:free()
-    end
+    local custom_file = scfg.custom_icon_enabled and vosicons.userIconFile(custom_name)
+    local mark = IconWidget:new {
+        icon = name,
+        file = custom_file or vosicons.iconFile(name),
+        rotation_angle = rotation_angle or 0,
+        width = corner_mark_size,
+        height = corner_mark_size,
+        alpha = true,
+    }
+    mark:paintTo(bb, math.floor(mark_x), math.floor(mark_y))
+    mark:free()
 end
 
 local function paintCollectionStar(bb, self_widget)
