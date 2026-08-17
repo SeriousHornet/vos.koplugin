@@ -47,7 +47,7 @@ end
 
 function MenuSizeModule:getMenuItem()
     return {
-        text = _("Auto Menu Sizing"),
+        text = _("Auto menu size"),
         checked_func = function()
             return self:isConfigured()
         end,

@@ -231,8 +231,7 @@ function PageNumberSubtitles:reinit()
         if widget.patched_vos_page_subtitle_instance then
             if widget._vos_base_subtitle ~= nil and widget.title_bar then
                 local key = widget.name == "history" and "history" or "collections"
-                local subtitle = self:isEnabled() and self:cfg()[key] and pageText(widget)
-                    or widget._vos_base_subtitle
+                local subtitle = self:isEnabled() and self:cfg()[key] and pageText(widget) or widget._vos_base_subtitle
                 widget.title_bar:setSubTitle(subtitle, true)
             elseif widget.title_bar and widget.path then
                 updatePathChooserSubtitle(widget)

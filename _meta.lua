@@ -1,9 +1,10 @@
 local _ = require("gettext")
+local version = "1.2.0"
 
 return {
     fullname = _("Visual Overhaul Suite (VOS)"),
-    version = require("vos_version"),
+    version = version,
     description = _(
-        [[Visual customization for KOReader's navigation bar, cover browser, badges, and related UI elements.]]
+        [[Visual customization for KOReader with navigation bar, cover enhancements, badges, and related UI elements.]]
     ),
 }

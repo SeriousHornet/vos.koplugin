@@ -35,6 +35,17 @@ local item_names = {
     suspend_time = "Time in suspend",
 }
 
+local function supportsTextTitleBar(manager)
+    local title_bar = manager and manager.title_bar
+    return title_bar
+        and title_bar.title_face_fullscreen
+        and title_bar.title_face_not_fullscreen
+        and type(title_bar.clear) == "function"
+        and type(title_bar.init) == "function"
+        and type(title_bar.setTitle) == "function"
+        and type(title_bar.setSubTitle) == "function"
+end
+
 function FileManagerTitleBar:new(o)
     o = o or {}
     setmetatable(o, self)
@@ -156,6 +167,10 @@ function FileManagerTitleBar:update(manager)
         return
     end
     UIManager:unschedule(manager.updateVOSTitleBar)
+    if not supportsTextTitleBar(manager) then
+        manager._vos_titlebar_bold = nil
+        return
+    end
     if not self:isEnabled() then
         local default_face = manager.title_bar.fullscreen and manager.title_bar.title_face_fullscreen
             or manager.title_bar.title_face_not_fullscreen
@@ -366,6 +381,10 @@ function FileManagerTitleBar:getMenuItem()
     end
     return {
         text = _("Title bar"),
+        enabled_func = function()
+            return supportsTextTitleBar(FileManager.instance)
+        end,
+        help_text = _("Unavailable when another plugin replaces KOReader's text title bar."),
         sub_item_table = {
             toggle("Enable title bar information", "enabled"),
             { text = _("Items"), sub_item_table = item_toggles },

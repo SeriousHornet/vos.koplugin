@@ -37,9 +37,7 @@ local function cfg()
 end
 
 local function navbarEnabled()
-    return SETTINGS_MANAGER ~= nil
-        and SETTINGS_MANAGER:isMasterEnabled()
-        and SETTINGS_MANAGER:isEnabled("navbar")
+    return SETTINGS_MANAGER ~= nil and SETTINGS_MANAGER:isMasterEnabled() and SETTINGS_MANAGER:isEnabled("navbar")
 end
 
 local active_tab = "books"
@@ -93,8 +91,6 @@ local function updateLayoutConstants()
         c.active_tab_color = kaleido_colors[c.active_color_index].color
     end
 end
-
--- Tab definitions
 
 local function getBooksLabel()
     local c = cfg()
@@ -185,8 +181,6 @@ local function setActiveTab(tab_id)
         UIManager:setDirty(fm, "ui")
     end
 end
-
--- Tab callbacks
 
 local function onTabBooks()
     local fm = FileManager.instance
@@ -607,8 +601,6 @@ getTabCallback = function(tab_id)
     return nil
 end
 
--- Colored text/icon widgets (for the active-tab color setting)
-
 local ColorTextWidget = TextWidget:extend {}
 
 function ColorTextWidget:paintTo(bb, x, y)
@@ -675,8 +667,6 @@ function ColorIconWidget:paintTo(bb, x, y)
     bb:colorblitFromRGB32(self._bb, x, y, self._offset_x, self._offset_y, size.w, size.h, self._tint_color)
     self._bb:invert()
 end
-
--- Build a single tab / the full navbar
 
 local function createTabWidget(tab, tab_w, is_active)
     local c = cfg()
@@ -1418,10 +1408,7 @@ function NavbarModule:reinit()
         end
     else
         for view in pairs(standalone_views) do
-            if not view._vos_navbar_original_child
-                and not view._vos_navbar_is_qrss
-                and view._vos_navbar_tab_id
-            then
+            if not view._vos_navbar_original_child and not view._vos_navbar_is_qrss and view._vos_navbar_tab_id then
                 injectStandaloneNavbar(view, view._vos_navbar_tab_id)
                 UIManager:setDirty(view, "ui")
             end

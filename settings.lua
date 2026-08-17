@@ -7,7 +7,7 @@ local SortWidget = require("ui/widget/sortwidget")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local Screen = require("device").screen
-local VERSION = require("vos_version")
+local VERSION = require("_meta").version
 local _ = require("gettext")
 local T = require("ffi/util").template
 
@@ -306,6 +306,15 @@ function SettingsManager:load()
                 saved.extras.filemanager_titlebar = legacy
             end
         end
+        local cb = saved.coverbrowser
+        if cb then
+            if cb.percent_badge and cb.percent_badge.text_size and cb.percent_badge.text_size < 6 then
+                cb.percent_badge.text_size = math.floor(20 * cb.percent_badge.text_size)
+            end
+            if cb.pages_badge and cb.pages_badge.font_size and cb.pages_badge.font_size < 6 then
+                cb.pages_badge.font_size = math.floor(10 * cb.pages_badge.font_size)
+            end
+        end
         self.settings = saved
     else
         self:loadDefaults()
@@ -418,6 +427,8 @@ function SettingsManager:loadDefaults()
             },
             quick_settings = {
                 enabled = true,
+                custom_icon_enabled = false,
+                custom_icon_name = "",
                 button_order = {
                     "wifi",
                     "night",
@@ -543,13 +554,17 @@ function SettingsManager:loadDefaults()
                 abandoned_color_rgb = { 0xF4, 0x43, 0x36 },
                 border_w = 0.5,
                 border_color = "#000000",
+                dynamic_sizing = false,
+                max_bar_width = 235,
+                min_bar_width = 25,
+                pages_per_pixel = 3,
             },
             percent_badge = {
                 enabled = true,
                 custom_icon_enabled = false,
                 custom_icon_name = "",
                 position = "top_right",
-                text_size = 0.5,
+                text_size = 10,
                 move_on_x = 5,
                 move_on_y = -1,
                 badge_w = 70,
@@ -559,7 +574,7 @@ function SettingsManager:loadDefaults()
             pages_badge = {
                 enabled = false,
                 position = "bottom_left",
-                font_size = 0.95,
+                font_size = 10,
                 border_thickness = 2,
                 border_corner_radius = 12,
                 text_color = "#FFFFFF",
@@ -577,9 +592,17 @@ function SettingsManager:loadDefaults()
                 hold_icon_name = "",
                 finished_icon_name = "",
             },
+            projecttitle_cleanup = {
+                hide_status_icons = true,
+                hide_progress_widgets = true,
+                hide_series_indicator = true,
+                hide_cover_borders = true,
+                hide_large_book_icon = true,
+            },
             disable_description_hint = true,
             folder_covers = {
                 enabled = true,
+                style = "single",
                 show_folder_name = true,
                 folder_name_position = "center",
                 file_count_position = "bottom_right",
@@ -670,17 +693,24 @@ function SettingsManager:getMainMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-                if touchmenu_instance then
-                    touchmenu_instance:updateItems()
+                -- The tab bar icon widgets are baked into the TouchMenuBar at
+                -- init time and cannot be removed piecemeal.  Walk the
+                -- window stack top-down and close every TouchMenu so the
+                -- next open gets a clean bar.
+                for i = #UIManager._window_stack, 1, -1 do
+                    local w = UIManager._window_stack[i]
+                    if w.closeMenu then
+                        w:closeMenu()
+                    end
                 end
             end,
         },
         {
-            text = _("Navigation bar"),
+            text = _("NavBar"),
             sub_item_table = self:getNavbarMenu(plugin),
         },
         {
-            text = _("Cover enhancements"),
+            text = _("Covers"),
             sub_item_table = self:getCoverEnhancementsMenu(plugin),
         },
         {
@@ -718,33 +748,51 @@ function SettingsManager:getMainMenu(plugin)
             end,
         },
         {
-            text = _("Memory diagnostics"),
+            text = _("VOS Status"),
             callback = function()
-                local rss
-                local statm = io.open("/proc/self/statm", "r")
-                if statm then
-                    local __, resident_pages = statm:read("*number", "*number")
-                    statm:close()
-                    if resident_pages then
-                        rss = resident_pages * 4096 / 1024 / 1024
-                    end
+                local c = self_ref.settings.coverbrowser
+                local lines = {}
+                lines[#lines + 1] = T(_("VOS version: %1"), VERSION)
+                lines[#lines + 1] = ""
+                lines[#lines + 1] = _("Active features:")
+                if c.rounded_corners.enabled then
+                    lines[#lines + 1] = T(_("  Rounded corners: %1px"), c.rounded_corners.size)
                 end
-                local lua_heap = collectgarbage("count") / 1024
-                local text = string.format("KOReader Lua heap: %.1f MiB", lua_heap)
-                if plugin and plugin.lua_heap_delta_kb then
-                    text = text .. string.format("\nVOS initialization delta: %.1f KiB", plugin.lua_heap_delta_kb)
+                if c.progress_bar.enabled then
+                    lines[#lines + 1] = T(_("  Progress bar: %1"), c.progress_bar.position)
                 end
-                if rss then
-                    text = text .. string.format("\nKOReader process RSS: %.1f MiB", rss)
+                if c.percent_badge.enabled then
+                    lines[#lines + 1] = T(_("  Percent badge: %1"), c.percent_badge.position)
                 end
-                text = text .. "\n\nRSS includes KOReader, documents, caches, and all plugins."
-                UIManager:show(InfoMessage:new { text = text })
+                if c.pages_badge.enabled then
+                    lines[#lines + 1] = T(_("  Pages badge: %1"), c.pages_badge.position)
+                end
+                if c.status_icons.enabled then
+                    lines[#lines + 1] = T(_("  Status icons: %1"), c.status_icons.position)
+                end
+                if c.folder_covers.enabled then
+                    lines[#lines + 1] = T(_("  Folder covers: %1"), c.folder_covers.style)
+                end
+                if c.series_indicator.style ~= "off" then
+                    lines[#lines + 1] = T(_("  Series indicator: %1"), c.series_indicator.style)
+                end
+                local has_pt = rawget(_G, "ProjectTitle") ~= nil
+                if has_pt then
+                    lines[#lines + 1] = T(_("  ProjectTitle: %1"), "active")
+                end
+                UIManager:show(InfoMessage:new { text = table.concat(lines, "\n") })
             end,
         },
         {
             text = _("About"),
-            sub_item_table = {
-                {
+            sub_item_table = (function()
+                local ok_upd, updater = pcall(require, "vos_updater")
+                local items = {}
+                local banner = ok_upd and updater and updater.buildBannerItem and updater.buildBannerItem()
+                if banner then
+                    items[#items + 1] = banner
+                end
+                items[#items + 1] = {
                     text = _("Reset to Defaults"),
                     callback = function(touchmenu_instance)
                         UIManager:show(ConfirmBox:new {
@@ -766,22 +814,16 @@ function SettingsManager:getMainMenu(plugin)
                             end,
                         })
                     end,
-                },
-                {
+                }
+                items[#items + 1] = {
                     text = T(_("Version: %1"), VERSION),
                     callback = function()
-                        UIManager:show(InfoMessage:new {
-                            text = T(_("Visual Overhaul Suite (VOS)\nVersion %1"), VERSION),
-                        })
+                        if ok_upd and updater and updater.showInstallDialog then
+                            updater.showInstallDialog(VERSION)
+                        end
                     end,
-                },
-                {
-                    text = _("Check for Updates"),
-                    callback = function()
-                        require("updater").check(VERSION)
-                    end,
-                },
-                {
+                }
+                items[#items + 1] = {
                     text = _("About VOS"),
                     callback = function()
                         UIManager:show(InfoMessage:new {
@@ -794,14 +836,15 @@ function SettingsManager:getMainMenu(plugin)
                                     .. "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n"
                                     .. "  - Badges: progress bar, percentage, pages, status icons\n"
                                     .. "  - Clean up: hide pagination and the description hint bar\n"
-									.. "  - Extras: commonly used community patches\n\n"
+                                    .. "  - Extras: commonly used community patches\n\n"
                                     .. "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n\n"
                                     .. "Use 'Reset to Defaults' to restore the factory configuration."
                             ),
                         })
                     end,
-                },
-            },
+                }
+                return items
+            end)(),
         },
     }
 end
@@ -809,7 +852,7 @@ end
 function SettingsManager:getCleanupMenu(plugin)
     local self_ref = self
     local cb = self.settings.coverbrowser
-    return {
+    local items = {
         checkboxItem(self, cb, "disable_description_hint", "Disable description hint bar", plugin),
         {
             text = _("Disable pagination"),
@@ -832,6 +875,32 @@ function SettingsManager:getCleanupMenu(plugin)
             plugin
         ),
     }
+    local ui = plugin and plugin.ui
+    if ui and ui.projecttitle and ui.coverbrowser == ui.projecttitle then
+        table.insert(items, {
+            text = _("Project: Title cover grid"),
+            sub_item_table = groupFeatureMenuItems {
+                checkboxItem(self, cb.projecttitle_cleanup, "hide_status_icons", "Disable status icons", plugin),
+                checkboxItem(
+                    self,
+                    cb.projecttitle_cleanup,
+                    "hide_progress_widgets",
+                    "Disable progress widgets",
+                    plugin
+                ),
+                checkboxItem(
+                    self,
+                    cb.projecttitle_cleanup,
+                    "hide_series_indicator",
+                    "Disable series indicator",
+                    plugin
+                ),
+                checkboxItem(self, cb.projecttitle_cleanup, "hide_cover_borders", "Disable cover borders", plugin),
+                checkboxItem(self, cb.projecttitle_cleanup, "hide_large_book_icon", "Disable large-book icon", plugin),
+            },
+        })
+    end
+    return items
 end
 
 function SettingsManager:getCoverEnhancementsMenu(plugin)
@@ -845,7 +914,7 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
             },
         },
         {
-            text = _("Cover aspect ratio"),
+            text = _("Aspect ratio"),
             sub_item_table = {
                 numberItem(self, cb.cover_aspect_ratio, "ratio_w", "Aspect ratio width", plugin, { min = 1, max = 10 }),
                 numberItem(
@@ -884,6 +953,11 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
             text = _("Folder covers"),
             sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.folder_covers, "enabled", "Enable folder covers", plugin),
+                choiceItem(self, cb.folder_covers, "style", "Style", {
+                    { label = "Single", value = "single" },
+                    { label = "Collage", value = "collage" },
+                    { label = "Stack", value = "stack" },
+                }, plugin),
                 checkboxItem(self, cb.folder_covers, "show_folder_name", "Show folder name", plugin),
                 choiceItem(self, cb.folder_covers, "folder_name_position", "Folder name position", {
                     { label = "Top", value = "top" },
@@ -1030,6 +1104,36 @@ function SettingsManager:getBadgesMenu(plugin)
                         numberItem(self, cb.progress_bar, "bar_radius", "Bar radius", plugin, { min = 0, max = 15 }),
                     },
                 },
+                {
+                    text = _("Dynamic sizing"),
+                    sub_item_table = {
+                        checkboxItem(self, cb.progress_bar, "dynamic_sizing", "Scale bar to book length", plugin),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "pages_per_pixel",
+                            "Pages per pixel",
+                            plugin,
+                            { min = 1, max = 20 }
+                        ),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "min_bar_width",
+                            "Minimum bar width",
+                            plugin,
+                            { min = 5, max = 200 }
+                        ),
+                        numberItem(
+                            self,
+                            cb.progress_bar,
+                            "max_bar_width",
+                            "Maximum bar width",
+                            plugin,
+                            { min = 50, max = 500 }
+                        ),
+                    },
+                },
             },
         },
         {
@@ -1045,17 +1149,11 @@ function SettingsManager:getBadgesMenu(plugin)
                 {
                     text = _("Custom percent badge icon"),
                     sub_item_table = groupFeatureMenuItems {
-                        checkboxItem(
-                            self,
-                            cb.percent_badge,
-                            "custom_icon_enabled",
-                            "Enable custom icon",
-                            plugin
-                        ),
+                        checkboxItem(self, cb.percent_badge, "custom_icon_enabled", "Enable custom icon", plugin),
                         iconNameItem(self, cb.percent_badge, "custom_icon_name", "Icon name", plugin),
                     },
                 },
-                numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 0.1, max = 5 }),
+                numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 6, max = 40 }),
                 numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, { min = 20, max = 200 }),
@@ -1073,7 +1171,7 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom left", value = "bottom_left" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
-                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 0.1, max = 5 }),
+                numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 6, max = 40 }),
                 numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, { min = 0, max = 10 }),
                 numberItem(
                     self,
@@ -1147,13 +1245,7 @@ function SettingsManager:getBadgesMenu(plugin)
                 {
                     text = _("Custom status icons"),
                     sub_item_table = groupFeatureMenuItems {
-                        checkboxItem(
-                            self,
-                            cb.status_icons,
-                            "custom_icon_enabled",
-                            "Enable custom icon",
-                            plugin
-                        ),
+                        checkboxItem(self, cb.status_icons, "custom_icon_enabled", "Enable custom icon", plugin),
                         iconNameItem(self, cb.status_icons, "reading_icon_name", "Reading icon name", plugin),
                         iconNameItem(self, cb.status_icons, "hold_icon_name", "Hold icon name", plugin),
                         iconNameItem(self, cb.status_icons, "finished_icon_name", "Finished icon name", plugin),

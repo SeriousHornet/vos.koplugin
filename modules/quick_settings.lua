@@ -536,7 +536,8 @@ function QuickSettings:patchTouchMenu()
     local orig_updateItems = TouchMenu.updateItems
     function TouchMenu:updateItems(target_page, target_item_id)
         local module = QuickSettings.instance
-        if not (module and module:isEnabled())
+        if
+            not (module and module:isEnabled())
             or not (self.item_table and self.item_table.panel and self.item_table.vos_quick_settings)
         then
             self._vos_quick_settings_refs = nil
@@ -574,8 +575,12 @@ function QuickSettings:patchTouchMenu()
     local orig_onTapCloseAllMenus = TouchMenu.onTapCloseAllMenus
     function TouchMenu:onTapCloseAllMenus(arg, gesture)
         local module = QuickSettings.instance
-        if module and module:isEnabled()
-            and self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture)
+        if
+            module
+            and module:isEnabled()
+            and self.item_table
+            and self.item_table.vos_quick_settings
+            and handleGesture(self, gesture)
         then
             return true
         end
@@ -584,8 +589,12 @@ function QuickSettings:patchTouchMenu()
     local orig_onSwipe = TouchMenu.onSwipe
     function TouchMenu:onSwipe(arg, gesture)
         local module = QuickSettings.instance
-        if module and module:isEnabled()
-            and self.item_table and self.item_table.vos_quick_settings and handleGesture(self, gesture)
+        if
+            module
+            and module:isEnabled()
+            and self.item_table
+            and self.item_table.vos_quick_settings
+            and handleGesture(self, gesture)
         then
             return true
         end
@@ -631,8 +640,13 @@ function QuickSettings:syncMenu(menu)
     end
     removeQuickSettingsTab(menu)
     if self:isEnabled() and menu.tab_item_table then
+        local icon_name = "quicksettings"
+        local cfg = self:cfg()
+        if cfg.custom_icon_enabled and cfg.custom_icon_name ~= "" then
+            icon_name = cfg.custom_icon_name
+        end
         table.insert(menu.tab_item_table, 1, {
-            icon = "quicksettings",
+            icon = icon_name,
             remember = false,
             vos_quick_settings = true,
             panel = function(touch_menu)
@@ -651,8 +665,13 @@ function QuickSettings:patchMenus()
             local result = orig_setUpdateItemTable(self, ...)
             local module = QuickSettings.instance
             if module and module:isEnabled() and self.tab_item_table and not hasQuickSettingsTab(self) then
+                local icon_name = "quicksettings"
+                local cfg = module:cfg()
+                if cfg.custom_icon_enabled and cfg.custom_icon_name ~= "" then
+                    icon_name = cfg.custom_icon_name
+                end
                 table.insert(self.tab_item_table, 1, {
-                    icon = "quicksettings",
+                    icon = icon_name,
                     remember = false,
                     vos_quick_settings = true,
                     panel = function(menu)
@@ -730,19 +749,20 @@ function QuickSettings:getMenuItem()
             })
         end,
     })
-    for index = 1, #button_order do
-        local id = button_order[index]
-        local button_id = id
-        table.insert(toggles, {
-            text = _(button_names[button_id]),
-            checked_func = function()
-                return cfg.show_buttons[button_id] == true
-            end,
-            callback = function()
-                cfg.show_buttons[button_id] = not cfg.show_buttons[button_id]
-                self.settings:save()
-            end,
-        })
+    for index = 1, #cfg.button_order do
+        local id = cfg.button_order[index]
+        if button_names[id] then
+            table.insert(toggles, {
+                text = _(button_names[id]),
+                checked_func = function()
+                    return cfg.show_buttons[id] == true
+                end,
+                callback = function()
+                    cfg.show_buttons[id] = not cfg.show_buttons[id]
+                    self.settings:save()
+                end,
+            })
+        end
     end
     local function toggle(text, key, restart)
         return {
@@ -759,10 +779,71 @@ function QuickSettings:getMenuItem()
             end,
         }
     end
+    local DataStorage = require("datastorage")
+    local InputDialog = require("ui/widget/inputdialog")
     return {
         text = _("Quick settings"),
         sub_item_table = {
             toggle("Enable quick settings tab", "enabled", true),
+            {
+                text = _("Custom icon"),
+                sub_item_table = {
+                    {
+                        text = _("Enable custom icon"),
+                        checked_func = function()
+                            return cfg.custom_icon_enabled == true
+                        end,
+                        callback = function()
+                            cfg.custom_icon_enabled = not cfg.custom_icon_enabled
+                            self.settings:save()
+                        end,
+                    },
+                    {
+                        text_func = function()
+                            if cfg.custom_icon_name ~= "" then
+                                return T(_("%1: %2"), _("Icon name"), cfg.custom_icon_name)
+                            end
+                            return _("Icon name")
+                        end,
+                        callback = function(touchmenu)
+                            local dialog
+                            dialog = InputDialog:new {
+                                title = _("Icon name"),
+                                input = cfg.custom_icon_name,
+                                hint = T(
+                                    _("Place %1.svg or %1.png in %2, then enter %1 with or without the extension."),
+                                    "my_icon",
+                                    DataStorage:getDataDir() .. "/icons"
+                                ),
+                                buttons = {
+                                    {
+                                        {
+                                            text = _("Cancel"),
+                                            callback = function()
+                                                UIManager:close(dialog)
+                                            end,
+                                        },
+                                        {
+                                            text = _("Set"),
+                                            is_enter_default = true,
+                                            callback = function()
+                                                cfg.custom_icon_name = dialog:getInputText() or ""
+                                                self.settings:save()
+                                                UIManager:close(dialog)
+                                                if touchmenu then
+                                                    touchmenu:updateItems()
+                                                end
+                                            end,
+                                        },
+                                    },
+                                },
+                            }
+                            UIManager:show(dialog)
+                            dialog:onShowKeyboard()
+                        end,
+                    },
+                },
+            },
             { text = _("Buttons"), sub_item_table = toggles },
             toggle("Show frontlight slider", "show_frontlight"),
             toggle("Show warmth slider", "show_warmth"),

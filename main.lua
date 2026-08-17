@@ -1,14 +1,9 @@
---[[--
-Visual Overhaul Suite - Complete visual customization for KOReader
-@module koplugin.visualoverhaul
---]]
---
+-- Visual Overhaul Suite — Complete visual customization for KOReader.
 
 local WidgetContainer = require("ui/widget/container/widgetcontainer")
 local FileManager = require("apps/filemanager/filemanager")
 local UIManager = require("ui/uimanager")
 local _ = require("gettext")
-
 local SettingsManager = require("settings")
 local NavbarModule = require("modules/navbar")
 local CoverBrowserModule = require("modules/vos")
@@ -35,10 +30,8 @@ function VisualOverhaul:init()
         G_reader_settings:saveSetting("plugins_disabled", plugins_disabled)
     end
 
-    local heap_before = collectgarbage("count")
     self.settings = SettingsManager:new()
     self.settings:load()
-
     self.extra_modules = {
         UIFontModule:new { plugin = self, settings = self.settings },
         BrowserHideUnderline:new { plugin = self, settings = self.settings },
@@ -69,10 +62,30 @@ function VisualOverhaul:init()
     if self.ui and self.ui.menu then
         self.ui.menu:registerToMainMenu(self)
     end
-    self.lua_heap_delta_kb = collectgarbage("count") - heap_before
+
+    local ok_upd, updater = pcall(require, "vos_updater")
+    if ok_upd and updater and updater.scheduleAutoCheck then
+        updater.scheduleAutoCheck()
+    end
 end
 
 function VisualOverhaul:addToMainMenu(menu_items)
+    local order = require("ui/elements/filemanager_menu_order").filemanager_settings
+    for index = #order, 1, -1 do
+        if order[index] == "visual_overhaul" then
+            table.remove(order, index)
+        end
+    end
+    local display_mode_index
+    for index, id in ipairs(order) do
+        if id == "filemanager_display_mode" then
+            display_mode_index = index
+            break
+        end
+    end
+    if display_mode_index then
+        table.insert(order, display_mode_index, "visual_overhaul")
+    end
     menu_items.visual_overhaul = {
         text = _("Visual Overhaul Suite (VOS)"),
         sorting_hint = "tools",
@@ -95,8 +108,6 @@ function VisualOverhaul:refresh()
         self.coverbrowser:reinit()
     end
 
-    -- Rebuild each visible list at most once. Avoid free/init and overlapping
-    -- full-screen refreshes: these are expensive on e-ink devices.
     local fm = FileManager.instance
     if fm then
         local updated = {}

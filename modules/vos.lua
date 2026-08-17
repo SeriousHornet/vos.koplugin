@@ -26,9 +26,13 @@ local userpatch = require("userpatch")
 local util = require("util")
 local ReadCollection = require("readcollection")
 local logger = require("logger")
-local _ = require("gettext")
 
 local SETTINGS_MANAGER = nil
+
+local function widgetSize(w)
+    local s = w:getSize()
+    return s.w, s.h
+end
 local MAX_IMG_W, MAX_IMG_H -- book-cover max cell size, set in init()
 
 local function getCfg()
@@ -188,10 +192,8 @@ local function clearRoundedCornerCache()
 end
 
 local function paintRoundedCorners(bb, target, x, y, self_widget, c)
-    local corner_size = math.max(
-        1,
-        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), target.dimen.w, target.dimen.h))
-    )
+    local corner_size =
+        math.max(1, math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), target.dimen.w, target.dimen.h)))
     local icons = getRoundedCornerIcons(corner_size)
     local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
@@ -211,13 +213,9 @@ local function paintRoundedCorners(bb, target, x, y, self_widget, c)
         bb:paintBorder(ix, iy, iw, ih, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
     end
 
-    local function sz(w)
-        local s = w:getSize()
-        return s.w, s.h
-    end
-    local trw = select(1, sz(TR))
-    local blh = select(2, sz(BL))
-    local brw, brh = sz(BR)
+    local trw = select(1, widgetSize(TR))
+    local blh = select(2, widgetSize(BL))
+    local brw, brh = widgetSize(BR)
 
     TL:paintTo(bb, fx, fy)
     TR:paintTo(bb, fx + fw - trw, fy)
@@ -353,6 +351,33 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
     end
 
     local bar_w = math.max(1, right - left)
+
+    if pcfg.dynamic_sizing then
+        local pages
+        if self_widget.filepath then
+            local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
+            if bookinfo and bookinfo.pages then
+                pages = tonumber(bookinfo.pages)
+            end
+            if not pages then
+                -- CoverBrowser does not store pages for EPUB (crengine), so
+                -- fall back to a page-count token in the filename, e.g. "P(170)".
+                pages = self_widget.filepath:match("[Pp]%((%d+)%)")
+                    or self_widget.filepath:match("(%d+)%s*[Pp]ages?")
+                if pages then
+                    pages = tonumber(pages)
+                end
+            end
+        end
+        if pages then
+            local ppp = pcfg.pages_per_pixel or 3
+            local max_w = pcfg.max_bar_width or 235
+            local min_w = pcfg.min_bar_width or 25
+            local dynamic_w = math.max(min_w, math.min(max_w, math.floor(pages / ppp + 0.5)))
+            bar_w = math.min(bar_w, Screen:scaleBySize(dynamic_w))
+        end
+    end
+
     local BAR_H = Screen:scaleBySize(pcfg.bar_h)
     local BAR_RADIUS = Screen:scaleBySize(pcfg.bar_radius)
     local bar_x = math.floor(left + 0.5)
@@ -463,7 +488,7 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local corner_mark_size = Screen:scaleBySize(20)
 
     local percent_text = string.format("%d%%", math.floor(self_widget.percent_finished * 100))
-    local font_size = math.floor(corner_mark_size * pcfg.text_size)
+    local font_size = pcfg.text_size
     local percent_widget = TextWidget:new {
         text = percent_text,
         font_size = font_size,
@@ -486,8 +511,7 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     local fw, fh = target.dimen.w, target.dimen.h
 
     local default_badge_file = vosicons.iconFile("percent.badge")
-    local badge_file = pcfg.custom_icon_enabled and vosicons.userIconFile(pcfg.custom_icon_name)
-        or default_badge_file
+    local badge_file = pcfg.custom_icon_enabled and vosicons.userIconFile(pcfg.custom_icon_name) or default_badge_file
     local percent_badge = badge_file and getPercentBadgeImage(badge_file, BADGE_W, BADGE_H)
     if not percent_badge and default_badge_file and badge_file ~= default_badge_file then
         percent_badge = getPercentBadgeImage(default_badge_file, BADGE_W, BADGE_H)
@@ -545,7 +569,7 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
 
     local corner_mark_size = Screen:scaleBySize(10)
     local page_text = page_count .. " p."
-    local font_size = math.floor(corner_mark_size * pcfg.font_size)
+    local font_size = pcfg.font_size
 
     local border = pcfg.border_thickness
     local pages_text = ColorTextWidget:new {
@@ -750,14 +774,19 @@ local function installDescriptionHintOverride()
     end
 end
 
-local FolderCoverSpec = { name = ".cover", exts = { ".jpg", ".jpeg", ".png", ".webp", ".gif" } }
+local FolderCoverSpec = {
+    names = { ".cover", "cover" },
+    exts = { ".jpg", ".jpeg", ".png", ".webp", ".gif" },
+}
 
 local function findFolderCoverFile(dir_path)
-    local path = dir_path .. "/" .. FolderCoverSpec.name
-    for _, ext in ipairs(FolderCoverSpec.exts) do
-        local fname = path .. ext
-        if util.fileExists(fname) then
-            return fname
+    for _, name in ipairs(FolderCoverSpec.names) do
+        local base = dir_path .. "/" .. name
+        for _, ext in ipairs(FolderCoverSpec.exts) do
+            local fname = base .. ext
+            if util.fileExists(fname) then
+                return fname
+            end
         end
     end
 end
@@ -775,15 +804,7 @@ local function isCoverFile(path)
         return false
     end
     local lower = path:lower()
-    if lower:match("/%.cover%.") then
-        return true
-    end
-    for _, ext in ipairs(FolderCoverSpec.exts) do
-        if lower:sub(-#ext) == ext then
-            return true
-        end
-    end
-    return false
+    return lower:match("/%.?cover%.[^/]+$") ~= nil or lower:match("/%.?folder%.[^/]+$") ~= nil
 end
 
 local function getFolderAspectDimensions(width, height, border_size, c)
@@ -800,6 +821,163 @@ local function getFolderAspectDimensions(width, height, border_size, c)
         frame_h = available_w / ratio
     end
     return { w = frame_w + 2 * border_size, h = frame_h + 2 * border_size }
+end
+
+local function getFolderEntries(menu, path)
+    local saved_dummy = menu._dummy
+    menu._dummy = true
+    local ok, entries = pcall(menu.genItemTableFromPath, menu, path)
+    menu._dummy = saved_dummy
+    return ok and entries or nil
+end
+
+local function getCachedFolderCover(path, menu)
+    local bookinfo = BookInfoManager:getBookInfo(path, true)
+    if not (bookinfo and bookinfo.cover_bb) then
+        return
+    end
+    if
+        bookinfo.has_cover
+        and bookinfo.cover_fetched
+        and not bookinfo.ignore_cover
+        and not BookInfoManager.isCachedCoverInvalid(bookinfo, menu.cover_specs)
+    then
+        return {
+            data = bookinfo.cover_bb,
+            width = bookinfo.cover_w,
+            height = bookinfo.cover_h,
+        }
+    end
+    bookinfo.cover_bb:free()
+end
+
+local function collectFolderCovers(menu, root_path, direct_entries, wanted)
+    local covers = {}
+    local queue = {}
+    local queued = { [root_path] = true }
+    local seen_files = {}
+    local inspected_dirs = 0
+    local inspected_files = 0
+    local max_dirs = 64
+    local max_files = 256
+    local root_prefix = root_path .. "/"
+
+    local function inspect(entries)
+        for _, entry in ipairs(entries or {}) do
+            local path = entry.path or entry.file
+            if type(path) == "string" and (entry.is_file or entry.file) then
+                if not seen_files[path] and not isCoverFile(path) and inspected_files < max_files then
+                    seen_files[path] = true
+                    inspected_files = inspected_files + 1
+                    local cover = getCachedFolderCover(path, menu)
+                    if cover then
+                        table.insert(covers, cover)
+                        if #covers >= wanted then
+                            return true
+                        end
+                    end
+                end
+            elseif
+                type(path) == "string"
+                and path ~= root_path
+                and path:sub(1, #root_prefix) == root_prefix
+                and not queued[path]
+            then
+                queued[path] = true
+                table.insert(queue, path)
+            end
+        end
+    end
+
+    if inspect(direct_entries) then
+        return covers
+    end
+    local queue_index = 1
+    while queue_index <= #queue and inspected_dirs < max_dirs and inspected_files < max_files do
+        local path = queue[queue_index]
+        queue_index = queue_index + 1
+        inspected_dirs = inspected_dirs + 1
+        if inspect(getFolderEntries(menu, path)) then
+            break
+        end
+    end
+    return covers
+end
+
+local function newFolderCoverCell(source, width, height)
+    local cover_w = source.width or source.data:getWidth()
+    local cover_h = source.height or source.data:getHeight()
+    local max_w = math.max(1, width - 2 * Size.border.thin)
+    local max_h = math.max(1, height - 2 * Size.border.thin)
+    local _, __, scale_factor = BookInfoManager.getCachedCoverSize(cover_w, cover_h, max_w, max_h)
+    local image = ImageWidget:new { image = source.data, scale_factor = scale_factor }
+    source.data = nil
+    local cover = FrameContainer:new {
+        margin = 0,
+        padding = 0,
+        radius = Size.radius.default,
+        bordersize = Size.border.thin,
+        color = Blitbuffer.COLOR_GRAY_3,
+        background = Blitbuffer.COLOR_GRAY_3,
+        image,
+    }
+    return CenterContainer:new { dimen = { w = width, h = height }, cover }
+end
+
+local function buildFolderCoverGroup(covers, style, dimen)
+    local group = OverlapGroup:new { dimen = dimen }
+    if style == "stack" then
+        local cell_w = math.max(1, math.floor(dimen.w * 0.76))
+        local cell_h = math.max(1, math.floor(dimen.h * 0.76))
+        for index, source in ipairs(covers) do
+            local position = #covers == 1 and 0.5 or (index - 1) / (#covers - 1)
+            local cell = newFolderCoverCell(source, cell_w, cell_h)
+            table.insert(
+                group,
+                CustomPositionContainer:new {
+                    dimen = dimen,
+                    horizontal_position = position,
+                    vertical_position = position,
+                    widget = cell,
+                    cell,
+                }
+            )
+        end
+    else
+        local gap = Size.padding.small
+        local cell_w, cell_h, positions
+        if #covers == 1 then
+            cell_w = math.max(1, math.floor(dimen.w * 0.76))
+            cell_h = math.max(1, math.floor(dimen.h * 0.76))
+            positions = { { 0.5, 0.5 } }
+        elseif #covers == 2 then
+            cell_w = math.max(1, math.floor((dimen.w - gap) / 2))
+            cell_h = math.max(1, math.floor(dimen.h * 0.8))
+            positions = { { 0, 0.5 }, { 1, 0.5 } }
+        elseif #covers == 3 then
+            cell_w = math.max(1, math.floor((dimen.w - gap) / 2))
+            cell_h = math.max(1, math.floor((dimen.h - gap) / 2))
+            positions = { { 0, 0 }, { 1, 0 }, { 0.5, 1 } }
+        else
+            cell_w = math.max(1, math.floor((dimen.w - gap) / 2))
+            cell_h = math.max(1, math.floor((dimen.h - gap) / 2))
+            positions = { { 0, 0 }, { 1, 0 }, { 0, 1 }, { 1, 1 } }
+        end
+        for index, source in ipairs(covers) do
+            local cell = newFolderCoverCell(source, cell_w, cell_h)
+            table.insert(
+                group,
+                CustomPositionContainer:new {
+                    dimen = dimen,
+                    horizontal_position = positions[index][1],
+                    vertical_position = positions[index][2],
+                    widget = cell,
+                    cell,
+                }
+            )
+        end
+    end
+    return group
 end
 
 local function getFolderTextBox(self_widget, dimen, c)
@@ -840,23 +1018,29 @@ local function getFolderTextBox(self_widget, dimen, c)
     return directory
 end
 
-local function setFolderCover(self_widget, img, c)
+local function setFolderCover(self_widget, img, c, entries)
     local frame_dimen = getFolderAspectDimensions(self_widget.width, self_widget.height, 0, c)
     local rcfg = c.cover_aspect_ratio
 
-    local image = img.file
-            and ImageWidget:new {
-                file = img.file,
-                width = frame_dimen.w,
-                height = frame_dimen.h,
-                stretch_limit_percentage = rcfg.stretch_limit,
-            }
-        or ImageWidget:new {
+    local image
+    if img.file then
+        image = ImageWidget:new {
+            file = img.file,
+            width = frame_dimen.w,
+            height = frame_dimen.h,
+            stretch_limit_percentage = rcfg.stretch_limit,
+        }
+    elseif img.style == "collage" or img.style == "stack" then
+        image = buildFolderCoverGroup(img.covers, img.style, frame_dimen)
+    else
+        image = ImageWidget:new {
             image = img.data,
             width = frame_dimen.w,
             height = frame_dimen.h,
             stretch_limit_percentage = rcfg.stretch_limit,
         }
+        img.data = nil
+    end
 
     local image_widget = FrameContainer:new { padding = 0, bordersize = 0, image, overlap_align = "center" }
     local image_size = image:getSize()
@@ -884,11 +1068,10 @@ local function setFolderCover(self_widget, img, c)
 
     local nbitems_widget
     local file_count, folder_count = 0, 0
-    local entries = self_widget.menu:genItemTableFromPath(self_widget.entry.path)
     if entries then
         for _, entry in ipairs(entries) do
             if entry.is_file or entry.file then
-                if not isCoverFile(entry.path) then
+                if not isCoverFile(entry.path or entry.file) then
                     file_count = file_count + 1
                 end
             else
@@ -961,49 +1144,43 @@ local function setFolderCover(self_widget, img, c)
 end
 
 local function updateFolderCover(self_widget, c)
-    if self_widget._foldercover_processed or self_widget.menu.no_refresh_covers or not self_widget.do_cover_image then
+    if self_widget._foldercover_processed or self_widget.menu.no_refresh_covers then
         return
     end
-    if self_widget.entry.is_file or self_widget.entry.file or not self_widget.mandatory then
+    if self_widget.entry.is_file or self_widget.entry.file then
         return
     end
     local dir_path = self_widget.entry and self_widget.entry.path
     if not dir_path then
         return
     end
-    self_widget._foldercover_processed = true
+    local entries = getFolderEntries(self_widget.menu, dir_path)
 
     local cover_file = findFolderCoverFile(dir_path)
     if cover_file then
-        local success = pcall(setFolderCover, self_widget, { file = cover_file }, c)
+        local success = pcall(setFolderCover, self_widget, { file = cover_file }, c, entries)
         if success then
+            self_widget._foldercover_processed = true
             return
         end
     end
 
-    self_widget.menu._dummy = true
-    local entries = self_widget.menu:genItemTableFromPath(dir_path)
-    self_widget.menu._dummy = false
     if not entries then
         return
     end
 
-    for _, entry in ipairs(entries) do
-        if entry.is_file or entry.file then
-            local bookinfo = BookInfoManager:getBookInfo(entry.path, true)
-            if
-                bookinfo
-                and bookinfo.cover_bb
-                and bookinfo.has_cover
-                and bookinfo.cover_fetched
-                and not bookinfo.ignore_cover
-                and not BookInfoManager.isCachedCoverInvalid(bookinfo, self_widget.menu.cover_specs)
-            then
-                setFolderCover(self_widget, { data = bookinfo.cover_bb }, c)
-                break
-            end
-        end
+    local style = c.folder_covers.style or "single"
+    local wanted = style == "single" and 1 or 4
+    local covers = collectFolderCovers(self_widget.menu, dir_path, entries, wanted)
+    if #covers == 0 then
+        return
     end
+    if style == "single" then
+        setFolderCover(self_widget, covers[1], c, entries)
+    else
+        setFolderCover(self_widget, { style = style, covers = covers }, c, entries)
+    end
+    self_widget._foldercover_processed = true
 end
 
 local function paintFolderCorners(self_widget, bb, x, y, c)
@@ -1021,23 +1198,17 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     local cover_border = Screen:scaleBySize(c.folder_covers.folder_border)
     bb:paintBorder(image_x, image_y, image_size.w, image_size.h, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
 
-    local corner_size = math.max(
-        1,
-        math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), image_size.w, image_size.h))
-    )
+    local corner_size =
+        math.max(1, math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), image_size.w, image_size.h)))
     local icons = getRoundedCornerIcons(corner_size)
     local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
     if not (TL and TR and BL and BR) then
         return
     end
 
-    local function sz(w)
-        local s = w:getSize()
-        return s.w, s.h
-    end
-    local trw = select(1, sz(TR))
-    local blh = select(2, sz(BL))
-    local brw, brh = sz(BR)
+    local trw = select(1, widgetSize(TR))
+    local blh = select(2, widgetSize(BL))
+    local brw, brh = widgetSize(BR)
 
     TL:paintTo(bb, image_x, image_y)
     TR:paintTo(bb, image_x + image_size.w - trw, image_y)
@@ -1317,6 +1488,9 @@ local function patchMosaicMenuItem()
     local TRUE_ORIG_UPDATE = MosaicMenuItem.update
     local TRUE_ORIG_PAINTTO = MosaicMenuItem.paintTo
     local TRUE_ORIG_FREE = MosaicMenuItem.free
+    local project_title_dir = userpatch.getUpValue(TRUE_ORIG_PAINTTO, "plugin_dir")
+    local is_project_title_mosaic = type(project_title_dir) == "string"
+        and project_title_dir:match("projecttitle%.koplugin") ~= nil
 
     local CORNER_MARK_SIZE = userpatch.getUpValue(TRUE_ORIG_PAINTTO, "corner_mark_size") or Screen:scaleBySize(24)
 
@@ -1409,19 +1583,74 @@ local function patchMosaicMenuItem()
     MosaicMenuItem.paintTo = preserveUpvalues(TRUE_ORIG_PAINTTO, function(self, bb, x, y)
         local cb_enabled = masterEnabled()
         local star_enabled = collectionStarEnabled()
+        local c = cb_enabled and getCfg() or nil
+        local pt_cleanup = is_project_title_mosaic and c and c.projecttitle_cleanup or nil
 
-        -- koreader's native CoverBrowser paints its own status dogear in the
-        -- bottom-right corner whenever do_hint_opened && been_opened. Our
-        -- status_icons overlay draws its own mark at the same spot, so when
-        -- that feature is active we suppress the native one. The native code
-        -- only gates that dogear on been_opened, so temporarily clearing it
-        -- (and restoring it before our overlay reads it) is enough.
         local function paintToOrig(bb, x, y)
-            local saved_been_opened
+            local suppress_status = pt_cleanup and pt_cleanup.hide_status_icons
+            local suppress_progress = pt_cleanup and pt_cleanup.hide_progress_widgets
+            local suppress_series = pt_cleanup and pt_cleanup.hide_series_indicator
+            local suppress_border = pt_cleanup and pt_cleanup.hide_cover_borders
+            local suppress_large_book = pt_cleanup and pt_cleanup.hide_large_book_icon
+            local saved_been_opened = self.been_opened
+            local saved_status = self.status
+            local saved_percent_finished = self.percent_finished
+            local saved_show_progress_bar = self.show_progress_bar
+            local target = self[1] and self[1][1] and self[1][1][1]
+            local saved_border_size = target and target.bordersize
+            local orig_get_setting
+            local orig_image_paint
+            local orig_progress_paint
             local orig_is_in_collection
-            if cb_enabled and getCfg().status_icons.enabled and self.been_opened then
-                saved_been_opened = self.been_opened
+
+            if ((c and c.status_icons.enabled) or suppress_status) and self.been_opened then
                 self.been_opened = false
+            end
+            if suppress_status then
+                self.status = nil
+            end
+            if suppress_progress then
+                self.percent_finished = nil
+                self.show_progress_bar = false
+            end
+            if suppress_border and target then
+                target.bordersize = 0
+            end
+            if suppress_series then
+                orig_get_setting = BookInfoManager.getSetting
+                BookInfoManager.getSetting = function(manager, setting_name, ...)
+                    if setting_name == "series_mode" then
+                        return nil
+                    end
+                    return orig_get_setting(manager, setting_name, ...)
+                end
+            end
+            if suppress_status or suppress_large_book then
+                orig_image_paint = ImageWidget.paintTo
+                ImageWidget.paintTo = function(widget, ...)
+                    local file = widget.file
+                    if type(file) == "string" then
+                        if
+                            suppress_status
+                            and (
+                                file:match("/projecttitle%.koplugin/resources/trophy%.svg$")
+                                or file:match("/projecttitle%.koplugin/resources/pause%.svg$")
+                                or file:match("/projecttitle%.koplugin/resources/new%.svg$")
+                            )
+                        then
+                            return
+                        end
+                        if suppress_large_book and file:match("/projecttitle%.koplugin/resources/large_book%.svg$") then
+                            return
+                        end
+                    end
+                    return orig_image_paint(widget, ...)
+                end
+            end
+            if (c and c.progress_bar.hide_native) or suppress_progress then
+                local ProgressWidget = require("ui/widget/progresswidget")
+                orig_progress_paint = ProgressWidget.paintTo
+                ProgressWidget.paintTo = function() end
             end
             if hideNativeCollectionStarEnabled() then
                 orig_is_in_collection = ReadCollection.isFileInCollections
@@ -1429,21 +1658,41 @@ local function patchMosaicMenuItem()
                     return false
                 end
             end
-            TRUE_ORIG_PAINTTO(self, bb, x, y)
+
+            local ok, result = xpcall(function()
+                return TRUE_ORIG_PAINTTO(self, bb, x, y)
+            end, debug.traceback)
+
             if orig_is_in_collection then
                 ReadCollection.isFileInCollections = orig_is_in_collection
             end
-            if saved_been_opened then
-                self.been_opened = saved_been_opened
+            if orig_progress_paint then
+                require("ui/widget/progresswidget").paintTo = orig_progress_paint
             end
+            if orig_image_paint then
+                ImageWidget.paintTo = orig_image_paint
+            end
+            if orig_get_setting then
+                BookInfoManager.getSetting = orig_get_setting
+            end
+            if suppress_border and target then
+                target.bordersize = saved_border_size
+            end
+            self.been_opened = saved_been_opened
+            self.status = saved_status
+            self.percent_finished = saved_percent_finished
+            self.show_progress_bar = saved_show_progress_bar
+
+            if not ok then
+                error(result, 0)
+            end
+            return result
         end
 
         if not cb_enabled and not star_enabled then
             paintToOrig(bb, x, y)
             return
         end
-        local c = getCfg()
-
         if not cb_enabled then
             paintToOrig(bb, x, y)
             if star_enabled then
@@ -1452,15 +1701,7 @@ local function patchMosaicMenuItem()
             return
         end
 
-        if c.progress_bar.hide_native then
-            local ProgressWidget = require("ui/widget/progresswidget")
-            local orig_pw_paint = ProgressWidget.paintTo
-            ProgressWidget.paintTo = function() end
-            paintToOrig(bb, x, y)
-            ProgressWidget.paintTo = orig_pw_paint
-        else
-            paintToOrig(bb, x, y)
-        end
+        paintToOrig(bb, x, y)
 
         local is_dir = self.is_directory or (self.entry and not (self.entry.is_file or self.entry.file))
 
