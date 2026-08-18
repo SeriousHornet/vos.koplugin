@@ -342,8 +342,8 @@ function SettingsManager:loadDefaults()
         enabled_modules = {
             navbar = true,
             coverbrowser = true,
-            collection_star = false,
-            hide_pagination = false,
+            collection_star = true,
+            hide_pagination = true,
             hide_collection_star = true,
         },
         navbar = {
@@ -366,12 +366,12 @@ function SettingsManager:loadDefaults()
             news_folder = "",
             show_tabs = {
                 books = true,
-                manga = true,
-                news = true,
+                manga = false,
+                news = false,
                 continue = true,
-                history = false,
-                favorites = false,
-                collections = false,
+                history = true,
+                favorites = true,
+                collections = true,
                 zlib = false,
                 annas = false,
                 appstore = false,
@@ -397,10 +397,10 @@ function SettingsManager:loadDefaults()
                 "appstore",
                 "opds",
                 "exit",
-                "page_right",
                 "sleep",
                 "restart",
                 "stats",
+				"page_right",
             },
             custom_tabs = {},
         },
@@ -408,7 +408,7 @@ function SettingsManager:loadDefaults()
             size = 20,
             x_offset = 6,
             y_offset = 6,
-            position = "top_left",
+            position = "top_right",
             use_background_circle = true,
             background_color = "#000000",
         },
@@ -525,7 +525,7 @@ function SettingsManager:loadDefaults()
                 fill = false,
             },
             stretch_covers = {
-                enabled = true,
+                enabled = false,
             },
             series_indicator = {
                 style = "badge", -- "off" | "badge" | "bar"
@@ -568,13 +568,13 @@ function SettingsManager:loadDefaults()
                 enabled = true,
                 custom_icon_enabled = false,
                 custom_icon_name = "",
-                position = "top_right",
+                position = "top_left",
                 text_size = 10,
-                move_on_x = 5,
+                move_on_x = 10,
                 move_on_y = -1,
-                badge_w = 70,
+                badge_w = 50,
                 badge_h = 40,
-                bump_up = 1,
+                bump_up = 7,
             },
             pages_badge = {
                 enabled = false,
@@ -610,7 +610,7 @@ function SettingsManager:loadDefaults()
                 style = "single",
                 show_folder_name = true,
                 folder_name_position = "center",
-                file_count_position = "bottom_right",
+                file_count_position = "bottom_center",
                 file_count_size = 14,
                 folder_font_size = 20,
                 folder_border = 0.5,
@@ -803,7 +803,7 @@ function SettingsManager:getMainMenu(plugin)
                     lines[#lines + 1] = T(_("  Folder covers: %1"), c.folder_covers.style)
                 end
                 if c.series_indicator.style ~= "off" then
-                    lines[#lines + 1] = T(_("  Series Badge: %1"), c.series_indicator.style)
+                    lines[#lines + 1] = T(_("  Series badge: %1"), c.series_indicator.style)
                 end
                 local has_pt = rawget(_G, "ProjectTitle") ~= nil
                 if has_pt then
