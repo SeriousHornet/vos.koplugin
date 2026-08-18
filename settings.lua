@@ -693,10 +693,6 @@ function SettingsManager:getMainMenu(plugin)
                 if plugin then
                     plugin:refresh()
                 end
-                -- The tab bar icon widgets are baked into the TouchMenuBar at
-                -- init time and cannot be removed piecemeal.  Walk the
-                -- window stack top-down and close every TouchMenu so the
-                -- next open gets a clean bar.
                 for i = #UIManager._window_stack, 1, -1 do
                     local w = UIManager._window_stack[i]
                     if w.closeMenu then
@@ -817,9 +813,27 @@ function SettingsManager:getMainMenu(plugin)
                 }
                 items[#items + 1] = {
                     text = T(_("Version: %1"), VERSION),
+                }
+                items[#items + 1] = {
+                    text = _("Check for updates"),
                     callback = function()
                         if ok_upd and updater and updater.showInstallDialog then
                             updater.showInstallDialog(VERSION)
+                        end
+                    end,
+                }
+                items[#items + 1] = {
+                    text = _("Check for updates automatically"),
+                    checked_func = function()
+                        return ok_upd and updater and updater.isAutoCheckEnabled
+                            and updater.isAutoCheckEnabled()
+                    end,
+                    callback = function(touchmenu_instance)
+                        if ok_upd and updater and updater.isAutoCheckEnabled and updater.setAutoCheck then
+                            updater.setAutoCheck(not updater.isAutoCheckEnabled())
+                            if touchmenu_instance then
+                                touchmenu_instance:updateItems()
+                            end
                         end
                     end,
                 }
@@ -1255,10 +1269,10 @@ function SettingsManager:getBadgesMenu(plugin)
             },
         },
         {
-            text = _("Collection star"),
+            text = _("Collection icon"),
             sub_item_table = groupFeatureMenuItems {
                 {
-                    text = _("Enable collection star"),
+                    text = _("Enable collection icon"),
                     checked_func = collectionStarEnabled,
                     callback = function()
                         self_ref:setEnabled("collection_star", not collectionStarEnabled())
@@ -1273,7 +1287,7 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom left", value = "bottom_left" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin, collectionStarEnabled),
-                numberItem(self, star, "size", "Size", plugin, {
+                numberItem(self, star, "size", "Icon size", plugin, {
                     min = 8,
                     max = 100,
                     enabled_func = collectionStarEnabled,
@@ -1522,7 +1536,7 @@ function SettingsManager:getNavbarMenu(plugin)
             },
         },
         {
-            text = _("Show top border"),
+            text = _("Show top divder"),
             checked_func = function()
                 return navbar.show_top_border
             end,

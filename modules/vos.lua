@@ -29,6 +29,10 @@ local logger = require("logger")
 
 local SETTINGS_MANAGER = nil
 
+-- Cached small blitbuffers for folder cover files (decoded once, re-used on
+-- every grid render, so large covers never hit the ImageCache nor re-decode).
+local folder_cover_cache = {}
+
 local function widgetSize(w)
     local s = w:getSize()
     return s.w, s.h
@@ -831,6 +835,32 @@ local function getFolderEntries(menu, path)
     return ok and entries or nil
 end
 
+local function clearFolderCoverCache()
+    folder_cover_cache = {}
+end
+
+-- Decode a folder cover file at most once per target size, scaled down to the
+-- requested dimensions (so only a small blitbuffer is ever retained).
+local function getCachedFolderCoverFile(cover_file, w, h)
+    local key = cover_file .. "#" .. w .. "x" .. h
+    local bb = folder_cover_cache[key]
+    if not bb then
+        local ok, rendered = pcall(RenderImage.renderImageFile, RenderImage, cover_file, false, w, h)
+        if ok and rendered then
+            bb = rendered
+            folder_cover_cache[key] = bb
+            local count = 0
+            for _ in pairs(folder_cover_cache) do
+                count = count + 1
+            end
+            if count > 128 then
+                folder_cover_cache = {}
+            end
+        end
+    end
+    return bb
+end
+
 local function getCachedFolderCover(path, menu)
     local bookinfo = BookInfoManager:getBookInfo(path, true)
     if not (bookinfo and bookinfo.cover_bb) then
@@ -1024,12 +1054,24 @@ local function setFolderCover(self_widget, img, c, entries)
 
     local image
     if img.file then
-        image = ImageWidget:new {
-            file = img.file,
-            width = frame_dimen.w,
-            height = frame_dimen.h,
-            stretch_limit_percentage = rcfg.stretch_limit,
-        }
+        local bb = getCachedFolderCoverFile(img.file, frame_dimen.w, frame_dimen.h)
+        if bb then
+            image = ImageWidget:new {
+                image = bb,
+                image_disposable = false, -- we own it via folder_cover_cache
+                stretch_limit_percentage = rcfg.stretch_limit,
+            }
+        else
+            -- Fallback: decode directly without caching in the ImageCache
+            -- (a large cover would exceed it and abort).
+            image = ImageWidget:new {
+                file = img.file,
+                width = frame_dimen.w,
+                height = frame_dimen.h,
+                stretch_limit_percentage = rcfg.stretch_limit,
+                file_do_cache = false,
+            }
+        end
     elseif img.style == "collage" or img.style == "stack" then
         image = buildFolderCoverGroup(img.covers, img.style, frame_dimen)
     else
@@ -1800,6 +1842,7 @@ end
 function CoverBrowserModule:reinit()
     clearRoundedCornerCache()
     clearPercentBadgeCache()
+    clearFolderCoverCache()
     local FileManager = require("apps/filemanager/filemanager")
     local fm = FileManager.instance
     if fm then

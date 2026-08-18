@@ -25,6 +25,7 @@ local GS_LAST_CHECK = "vos_upd_last_check"
 local GS_HAS_UPDATE = "vos_upd_has_update"
 local GS_LATEST_VER = "vos_upd_latest_ver"
 local GS_DL_URL = "vos_upd_dl_url"
+local GS_AUTO_CHECK = "vos_upd_auto_check"
 
 local _API_URL = string.format(
     "https://api.github.com/repos/%s/%s/releases/latest",
@@ -483,6 +484,9 @@ local function _doNetworkCheck()
     local release = _doFetch()
     if release.error then
         logger.warn("VOS updater: check error:", release.error)
+        -- Advance the throttle even on failure so a broken/offline check
+        -- doesn't retry (and block) on every single startup.
+        _persistState(os.time())
         return false, release.error
     end
     local current = _currentVersion()
@@ -572,10 +576,15 @@ function M.showInstallDialog(current_version)
 end
 
 --- Silent automatic check — called once on plugin startup.
---- 24 h throttle. Never shows UI or prompts for Wi-Fi.
+--- 24 h throttle via G_reader_settings. Never shows UI or prompts for Wi-Fi.
+--- Opt-in: only runs when the user enables it (default: off), so VOS stays
+--- completely silent/offline on devices that don't want a network check.
 function M.scheduleAutoCheck()
     _loadPersistedState()
     local gs = _gs()
+    if not (gs and gs:readSetting(GS_AUTO_CHECK)) then
+        return
+    end
     local now = os.time()
     local last = (gs and gs:readSetting(GS_LAST_CHECK)) or 0
     if type(last) ~= "number" then
@@ -596,6 +605,21 @@ function M.scheduleAutoCheck()
         end
         _doNetworkCheck()
     end)
+end
+
+--- Whether the silent auto-check is enabled.
+function M.isAutoCheckEnabled()
+    local gs = _gs()
+    return gs and gs:readSetting(GS_AUTO_CHECK) == true or false
+end
+
+--- Enable or disable the silent auto-check.
+function M.setAutoCheck(enabled)
+    local gs = _gs()
+    if gs then
+        gs:saveSetting(GS_AUTO_CHECK, enabled == true)
+        pcall(gs.flush, gs)
+    end
 end
 
 function M.hasUpdate()
