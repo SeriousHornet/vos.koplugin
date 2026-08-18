@@ -4,12 +4,32 @@ Visual Overhaul Suite is a KOReader plugin for customizing the file browser, cov
 
 VOS combines the functionality of the earlier [SeriousHornet/KOReader.patches](https://github.com/SeriousHornet/KOReader.patches) collection into an installable plugin. Its resources are bundled, settings are applied through the UI, and all changes can be previewed without restarting KOReader.
 
-## Screenshots
+Fully compatible with popular UIs like SimpleUI, Project: Title, Bookshelf.
 
+If you have been using any of my [patches](https://github.com/SeriousHornet/KOReader.patches) previously, you can now remove them and install this plugin. Don't worry about the custom settings you set on those patches, you can configure everything in the VOS menu now.
+
+## Screenshots
+### Folder with books
+<img width="759" height="990" alt="pic1" src="https://github.com/user-attachments/assets/c801f0b2-ab05-40d5-8194-eb6fa7c7bd88" /> 
+
+### Folder with folders with books
+<img width="762" height="995" alt="pic1a" src="https://github.com/user-attachments/assets/3444fe44-830c-4972-a0dc-d64eae1300ec" /> 
+
+### Finished books
+<img width="763" height="994" alt="pic1b" src="https://github.com/user-attachments/assets/0c46566c-4223-44fc-afdc-c62844e4ca14" />
+
+### Folder with books in a series
+<img width="754" height="557" alt="pic1c" src="https://github.com/user-attachments/assets/6c93564b-31bc-483e-8327-ca5405087b65" />
+
+### VOS Menu
+<img width="760" height="544" alt="pic2" src="https://github.com/user-attachments/assets/0198d113-157e-47f5-b5c3-21382d53c3a1" />
+
+### Quicksettings
+<img width="762" height="412" alt="pic3" src="https://github.com/user-attachments/assets/2f080c25-06f0-43bc-88ca-092aa2257c8f" />
 
 ## Features
 
-### Navigation bar
+### Bottom Navigation Bar
 
 - Configurable bottom navigation bar for the file browser
 - Adjustable size, labels, active-tab styling, and tab order
@@ -17,9 +37,9 @@ VOS combines the functionality of the earlier [SeriousHornet/KOReader.patches](h
 - Custom folder tabs with user-provided SVG or PNG icons
 - Optional navigation bars in supported standalone views
 
-**Compatible with SimpleUI. When SimpleUI owns the file-manager layout, VOS leaves its navigation bar untouched to avoid conflicting with it.**
+**Compatible with SimpleUI's Navbar. When SimpleUI is installed, VOS leaves its navigation bar untouched to avoid conflicting with it.**
 
-### Cover enhancements
+### Cover Grid Enhancements
 
 VOS enhances KOReader's mosaic cover view with:
 
@@ -30,20 +50,20 @@ VOS enhances KOReader's mosaic cover view with:
 
 A folder can provide its own artwork as `.cover.jpg`, `.cover.jpeg`, `.cover.png`, `.cover.webp`, or `.cover.gif`. If no folder artwork exists, VOS can use an available cached cover from a book inside that folder.
 
-### Badges and status
+### Badges and Status
 
-- Rounded reading-progress bar
+- Rounded **reading-progress bar** with optional dynamic length based on book size
 - Percentage badge with adjustable dimensions, placement, and an optional custom SVG or PNG icon
 - Page-count badge with configurable colors, border, and position
-- Numbered series badges or flap-style series indicators
+- Numbered series badges with configurable colors, border, and position or flap-style series indicators
 - Resizable and repositionable reading, hold/abandoned, and finished status icons with optional custom SVG or PNG artwork
 - Configurable collection star
 
 Page and series badges depend on metadata available to KOReader. The page badge can also read a `P(123)` or `p(123)` marker from a file's name text.
 
-### Clean up
+### Clean up tools
 
-Adds options to disable default KOReader widgets so new widgets can be applied.
+Adds options to disable default Coverbrowser/Project: Title's widgets so new widgets can be applied.
 - Disable the description hint bar
 - Disable pagination in supported file-browser views (https://github.com/qewer33/koreader-patches/blob/main/2-hide-pagination.lua)
 - Disable KOReader's default cover progress bar
@@ -61,7 +81,7 @@ Adds commonly used community patches for KOReader. Credits to patches' authors f
 - Add a configurable Quick Settings menu tab. Credits: [@qewer33](https://github.com/qewer33/koreader-patches/blob/main/2-quick-settings.lua)
 - Customize file-browser title-bar information. Credits: [@sebdelsol](https://github.com/sebdelsol/KOReader.patches/blob/main/2-filemanager-titlebar.lua)
 - Adjust menu sizing for device DPI. Credits: [@sebdelsol](https://github.com/sebdelsol/KOReader.patches/blob/main/2-menu-size.lua)
-- Open a document in incognito mode.Credits: [@Craftwork2720] (https://github.com/Craftwork2720/koreader-patches/blob/main/2-incognito.lua)
+- Open a document in incognito mode. Credits: [@Craftwork2720](https://github.com/Craftwork2720/KOReader.patches/blob/main/2-incognito.lua)
 
 ## Installation
 
@@ -93,7 +113,7 @@ koreader/settings/visual_overhaul.lua
 
 The exact base path depends on the device and KOReader installation.
 
-Custom navigation-tab, percentage-badge, and status icons belong in KOReader's user icons directory as SVG or PNG files. The icon name can be entered with or without its extension.
+Custom navigation-tab icons, percentage-badge, and status icons belong in KOReader's user icons directory as SVG or PNG files. The icon name can be entered with or without its extension.
 
 ## Updates
 
@@ -107,7 +127,7 @@ Disable VOS in KOReader's plugin manager, restart KOReader, and remove the `kore
 
 ## Compatibility
 
-VOS is developed against KOReader 2025.10 "Ghost". It relies on KOReader's internal file-browser and Cover Browser structures, so future KOReader releases may require compatibility updates.
+VOS is developed against KOReader 2026.07 "Sailing Walrus". It relies on KOReader's internal file-browser and Cover Browser structures, so future KOReader releases may require compatibility updates.
 
 Cover effects apply to the mosaic cover grid and may not appear in classic list views or unrelated third-party layouts. Some navigation and Quick Settings actions require the corresponding optional plugin or device capability.
 
