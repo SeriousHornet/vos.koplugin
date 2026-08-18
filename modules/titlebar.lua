@@ -386,7 +386,7 @@ function FileManagerTitleBar:getMenuItem()
         end,
         help_text = _("Unavailable when another plugin replaces KOReader's text title bar."),
         sub_item_table = {
-            toggle("Enable title bar information", "enabled"),
+            toggle("Enable Title bar", "enabled"),
             { text = _("Items"), sub_item_table = item_toggles },
             { text = _("Separator"), sub_item_table = separator_items },
             {

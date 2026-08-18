@@ -719,20 +719,48 @@ function SettingsManager:getMainMenu(plugin)
             sub_item_table = self:getBadgesMenu(plugin),
         },
         {
-            text = _("Clean up"),
-            sub_item_table = self:getCleanupMenu(plugin),
-        },
-        {
             text = _("Extras"),
             sub_item_table_func = function()
-                local items = {}
-                for __, module in ipairs(plugin.extra_modules or {}) do
-                    if module.getMenuItem then
-                        table.insert(items, module:getMenuItem())
+                local m = plugin.extra_modules or {}
+                local page_subs = m[7]
+                local browser_up = m[3]
+                local menu_text = m[6]
+                local menu_size = m[4]
+                local bf_items = {}
+                if page_subs and page_subs.getMenuItem then
+                    local pi = page_subs:getMenuItem()
+                    pi.text = _("Pagination in subtitles")
+                    bf_items[#bf_items + 1] = pi
+                end
+                if browser_up and browser_up.getMenuItem then
+                    local bi = browser_up:getMenuItem()
+                    for _, item in ipairs(bi.sub_item_table or {}) do
+                        bf_items[#bf_items + 1] = item
                     end
                 end
-                return groupMenuItems(items)
+                local menus_items = {}
+                if menu_text and menu_text.getMenuItem then
+                    local mt = menu_text:getMenuItem()
+                    for _, item in ipairs(mt.sub_item_table or {}) do
+                        menus_items[#menus_items + 1] = item
+                    end
+                end
+                if menu_size and menu_size.getMenuItem then
+                    menus_items[#menus_items + 1] = menu_size:getMenuItem()
+                end
+                local items = {}
+                if m[1] and m[1].getMenuItem then items[#items + 1] = m[1]:getMenuItem() end
+                if m[9] and m[9].getMenuItem then items[#items + 1] = m[9]:getMenuItem() end
+                if m[8] and m[8].getMenuItem then items[#items + 1] = m[8]:getMenuItem() end
+                items[#items + 1] = { text = _("Browser folders"), sub_item_table = bf_items }
+                items[#items + 1] = { text = _("Menus"), sub_item_table = menus_items }
+                if m[5] and m[5].getMenuItem then items[#items + 1] = m[5]:getMenuItem() end
+                return items
             end,
+        },
+        {
+            text = _("Clean up"),
+            sub_item_table = self:getCleanupMenu(plugin),
         },
         {
             text = _("Refresh UI"),
@@ -775,7 +803,7 @@ function SettingsManager:getMainMenu(plugin)
                     lines[#lines + 1] = T(_("  Folder covers: %1"), c.folder_covers.style)
                 end
                 if c.series_indicator.style ~= "off" then
-                    lines[#lines + 1] = T(_("  Series indicator: %1"), c.series_indicator.style)
+                    lines[#lines + 1] = T(_("  Series Badge: %1"), c.series_indicator.style)
                 end
                 local has_pt = rawget(_G, "ProjectTitle") ~= nil
                 if has_pt then
@@ -852,12 +880,12 @@ function SettingsManager:getMainMenu(plugin)
                                     .. "A comprehensive visual customization suite for KOReader.\n\n"
                                     .. "Features:\n"
                                     .. "  - Custom navigation bar with flexible tab arrangement\n"
-                                    .. "  - Cover enhancements: rounded corners, aspect ratio, series indicator, folder covers\n"
-                                    .. "  - Badges: progress bar, percentage, pages, status icons\n"
-                                    .. "  - Clean up: hide pagination and the description hint bar\n"
-                                    .. "  - Extras: commonly used community patches\n\n"
-                                    .. "Settings are stored in your KOReader settings directory (visual_overhaul.lua).\n\n"
-                                    .. "Use 'Reset to Defaults' to restore the factory configuration."
+                                    .. "  - Cover enhancements: rounded corners, aspect ratio, faded look and folder covers\n"
+                                    .. "  - Badges: progress bar, percentage, pages, series, collection and status icons\n"
+                                    .. "  - Extras: commonly used community patches absorbed into VOS\n\n"
+									.. "  - Clean up: hide pagination and the description hint bar\n"
+                                    .. "Settings are stored in your KOReader settings directory (koreader/settings/visual_overhaul.lua).\n\n"
+                                    .. "Use 'Reset to Defaults' to restore to factory configuration."
                             ),
                         })
                     end,
@@ -1166,15 +1194,20 @@ function SettingsManager:getBadgesMenu(plugin)
                         iconNameItem(self, cb.percent_badge, "custom_icon_name", "Icon name", plugin),
                     },
                 },
-                choiceItem(self, cb.percent_badge, "position", "Position", {
-                    { label = "Top left", value = "top_left" },
-                    { label = "Top right", value = "top_right" },
-                    { label = "Bottom left", value = "bottom_left" },
-                    { label = "Bottom right", value = "bottom_right" },
-                }, plugin),
+                {
+                    text = _("Position"),
+                    sub_item_table = groupFeatureMenuItems {
+                        choiceItem(self, cb.percent_badge, "position", "Position", {
+                            { label = "Top left", value = "top_left" },
+                            { label = "Top right", value = "top_right" },
+                            { label = "Bottom left", value = "bottom_left" },
+                            { label = "Bottom right", value = "bottom_right" },
+                        }, plugin),
+                        numberItem(self, cb.percent_badge, "move_on_x", "Move horizontally", plugin, { min = -300, max = 300 }),
+                        numberItem(self, cb.percent_badge, "move_on_y", "Move vertically", plugin, { min = -300, max = 300 }),
+                    },
+                },
                 numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 6, max = 40 }),
-                numberItem(self, cb.percent_badge, "move_on_x", "Move horizontally", plugin, { min = -300, max = 300 }),
-                numberItem(self, cb.percent_badge, "move_on_y", "Move vertically", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, { min = 20, max = 200 }),
                 numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, { min = 20, max = 200 }),
                 numberItem(self, cb.percent_badge, "bump_up", "Move % text up", plugin, { min = 0, max = 20 }),
@@ -1184,12 +1217,19 @@ function SettingsManager:getBadgesMenu(plugin)
             text = _("Pages badge"),
             sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.pages_badge, "enabled", "Enable pages badge", plugin),
-                choiceItem(self, cb.pages_badge, "position", "Position", {
-                    { label = "Top left", value = "top_left" },
-                    { label = "Top right", value = "top_right" },
-                    { label = "Bottom left", value = "bottom_left" },
-                    { label = "Bottom right", value = "bottom_right" },
-                }, plugin),
+                {
+                    text = _("Position"),
+                    sub_item_table = groupFeatureMenuItems {
+                        choiceItem(self, cb.pages_badge, "position", "Position", {
+                            { label = "Top left", value = "top_left" },
+                            { label = "Top right", value = "top_right" },
+                            { label = "Bottom left", value = "bottom_left" },
+                            { label = "Bottom right", value = "bottom_right" },
+                        }, plugin),
+                        numberItem(self, cb.pages_badge, "x_offset", "Move horizontally", plugin, { min = -300, max = 300 }),
+                        numberItem(self, cb.pages_badge, "y_offset", "Move vertically", plugin, { min = -300, max = 300 }),
+                    },
+                },
                 numberItem(self, cb.pages_badge, "font_size", "Font size", plugin, { min = 6, max = 40 }),
                 numberItem(self, cb.pages_badge, "border_thickness", "Border thickness", plugin, { min = 0, max = 10 }),
                 numberItem(
@@ -1200,8 +1240,6 @@ function SettingsManager:getBadgesMenu(plugin)
                     plugin,
                     { min = 0, max = 30 }
                 ),
-                numberItem(self, cb.pages_badge, "x_offset", "Move horizontally", plugin, { min = -300, max = 300 }),
-                numberItem(self, cb.pages_badge, "y_offset", "Move vertically", plugin, { min = -300, max = 300 }),
                 {
                     text = _("Colors"),
                     sub_item_table = {
@@ -1213,7 +1251,7 @@ function SettingsManager:getBadgesMenu(plugin)
             },
         },
         {
-            text = _("Series indicator"),
+            text = _("Series badge"),
             sub_item_table = {
                 choiceItem(self, cb.series_indicator, "style", "Style", {
                     { label = "Off", value = "off" },
@@ -1253,6 +1291,60 @@ function SettingsManager:getBadgesMenu(plugin)
                 },
             },
         },
+		{
+            text = _("Collection badge"),
+            sub_item_table = groupFeatureMenuItems {
+                {
+                    text = _("Enable collection badge"),
+                    checked_func = collectionStarEnabled,
+                    callback = function()
+                        self_ref:setEnabled("collection_star", not collectionStarEnabled())
+                        if plugin then
+                            plugin:refresh()
+                        end
+                    end,
+                },
+                {
+                    text = _("Position"),
+                    sub_item_table = groupFeatureMenuItems {
+                        choiceItem(self, star, "position", "Position", {
+                            { label = "Top left", value = "top_left" },
+                            { label = "Top right", value = "top_right" },
+                            { label = "Bottom left", value = "bottom_left" },
+                            { label = "Bottom right", value = "bottom_right" },
+                        }, plugin, collectionStarEnabled),
+                        numberItem(self, star, "x_offset", "Move horizontally", plugin, {
+                            min = 0,
+                            max = 100,
+                            enabled_func = collectionStarEnabled,
+                        }),
+                        numberItem(self, star, "y_offset", "Move vertically", plugin, {
+                            min = 0,
+                            max = 100,
+                            enabled_func = collectionStarEnabled,
+                        }),
+                    },
+                },
+                numberItem(self, star, "size", "Badge size", plugin, {
+                    min = 8,
+                    max = 100,
+                    enabled_func = collectionStarEnabled,
+                }),
+                checkboxItem(
+                    self,
+                    star,
+                    "use_background_circle",
+                    "Use background circle",
+                    plugin,
+                    collectionStarEnabled
+                ),
+                colorItem(self, star, "background_color", "Background color", plugin, {
+                    enabled_func = function()
+                        return collectionStarEnabled() and star.use_background_circle
+                    end,
+                }),
+            },
+        },
         {
             text = _("Status icons"),
             sub_item_table = groupFeatureMenuItems {
@@ -1273,59 +1365,10 @@ function SettingsManager:getBadgesMenu(plugin)
                     sub_item_table = groupFeatureMenuItems {
                         checkboxItem(self, cb.status_icons, "custom_icon_enabled", "Enable custom icon", plugin),
                         iconNameItem(self, cb.status_icons, "reading_icon_name", "Reading icon name", plugin),
-                        iconNameItem(self, cb.status_icons, "hold_icon_name", "Hold icon name", plugin),
+                        iconNameItem(self, cb.status_icons, "hold_icon_name", "Hold/Pause icon name", plugin),
                         iconNameItem(self, cb.status_icons, "finished_icon_name", "Finished icon name", plugin),
                     },
                 },
-            },
-        },
-        {
-            text = _("Collection icon"),
-            sub_item_table = groupFeatureMenuItems {
-                {
-                    text = _("Enable collection icon"),
-                    checked_func = collectionStarEnabled,
-                    callback = function()
-                        self_ref:setEnabled("collection_star", not collectionStarEnabled())
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                },
-                choiceItem(self, star, "position", "Position", {
-                    { label = "Top left", value = "top_left" },
-                    { label = "Top right", value = "top_right" },
-                    { label = "Bottom left", value = "bottom_left" },
-                    { label = "Bottom right", value = "bottom_right" },
-                }, plugin, collectionStarEnabled),
-                numberItem(self, star, "size", "Icon size", plugin, {
-                    min = 8,
-                    max = 100,
-                    enabled_func = collectionStarEnabled,
-                }),
-                numberItem(self, star, "x_offset", "Move horizontally", plugin, {
-                    min = 0,
-                    max = 100,
-                    enabled_func = collectionStarEnabled,
-                }),
-                numberItem(self, star, "y_offset", "Move vertically", plugin, {
-                    min = 0,
-                    max = 100,
-                    enabled_func = collectionStarEnabled,
-                }),
-                checkboxItem(
-                    self,
-                    star,
-                    "use_background_circle",
-                    "Use background circle",
-                    plugin,
-                    collectionStarEnabled
-                ),
-                colorItem(self, star, "background_color", "Background color", plugin, {
-                    enabled_func = function()
-                        return collectionStarEnabled() and star.use_background_circle
-                    end,
-                }),
             },
         },
     }

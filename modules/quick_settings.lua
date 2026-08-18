@@ -782,9 +782,9 @@ function QuickSettings:getMenuItem()
     local DataStorage = require("datastorage")
     local InputDialog = require("ui/widget/inputdialog")
     return {
-        text = _("Quick settings"),
+        text = _("Quicksettings"),
         sub_item_table = {
-            toggle("Enable quick settings tab", "enabled", true),
+            toggle("Enable Quicksettings", "enabled", true),
             {
                 text = _("Custom icon"),
                 sub_item_table = {
