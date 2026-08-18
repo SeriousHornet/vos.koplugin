@@ -10,22 +10,22 @@ If you have been using any of my [patches](https://github.com/SeriousHornet/KORe
 
 ## Screenshots
 ### Folder with books
-<img width="759" height="990" alt="pic1" src="https://github.com/user-attachments/assets/c801f0b2-ab05-40d5-8194-eb6fa7c7bd88" /> 
+<img width="637" height="832" alt="pic1" src="https://github.com/user-attachments/assets/cd8cadc4-4a10-4d37-b470-84d2bc16a9dc" />
 
 ### Folder with folders with books
-<img width="762" height="995" alt="pic1a" src="https://github.com/user-attachments/assets/3444fe44-830c-4972-a0dc-d64eae1300ec" /> 
+<img width="638" height="833" alt="pic2" src="https://github.com/user-attachments/assets/ceb5a6cc-28a6-4e58-bfff-bef1665cc582" />
 
 ### Finished books
-<img width="763" height="994" alt="pic1b" src="https://github.com/user-attachments/assets/0c46566c-4223-44fc-afdc-c62844e4ca14" />
+<img width="638" height="833" alt="pic3" src="https://github.com/user-attachments/assets/bc4f76e0-6b91-4a71-b717-f713b7f6fdb9" />
 
 ### Folder with books in a series
-<img width="754" height="557" alt="pic1c" src="https://github.com/user-attachments/assets/6c93564b-31bc-483e-8327-ca5405087b65" />
+<img width="628" height="463" alt="pic4" src="https://github.com/user-attachments/assets/769e0de8-0673-4207-b3d1-6fed0d607e4e" />
 
 ### VOS Menu
-<img width="760" height="544" alt="pic2" src="https://github.com/user-attachments/assets/0198d113-157e-47f5-b5c3-21382d53c3a1" />
+<img width="638" height="460" alt="pic5" src="https://github.com/user-attachments/assets/e33ddb4a-71ed-410e-a7f6-8df61ef91394" />
 
 ### Quicksettings
-<img width="762" height="412" alt="pic3" src="https://github.com/user-attachments/assets/2f080c25-06f0-43bc-88ca-092aa2257c8f" />
+<img width="638" height="346" alt="pic6" src="https://github.com/user-attachments/assets/36ce9ccf-4b3a-4bfd-8c63-5440ffb0a410" />
 
 ## Features
 
