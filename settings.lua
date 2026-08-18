@@ -7,9 +7,14 @@ local SortWidget = require("ui/widget/sortwidget")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
 local Screen = require("device").screen
-local VERSION = require("_meta").version
 local _ = require("gettext")
 local T = require("ffi/util").template
+
+-- Load version via dofile to bypass stale module cache (require may serve an
+-- old cached copy after the updater replaces files).
+local _plugin_dir = (debug.getinfo(1, "S").source or ""):match("^@?(.+)/[^/]+$") or "."
+local ok_meta, meta = pcall(dofile, _plugin_dir .. "/_meta.lua")
+local VERSION = (ok_meta and type(meta) == "table" and meta.version) or require("_meta").version
 
 local SettingsManager = {}
 
@@ -1066,7 +1071,7 @@ function SettingsManager:getBadgesMenu(plugin)
                             self,
                             cb.progress_bar,
                             "move_on_x",
-                            "Horizontal offset",
+                            "Move horizontally",
                             plugin,
                             { min = -300, max = 300 }
                         ),
@@ -1074,7 +1079,7 @@ function SettingsManager:getBadgesMenu(plugin)
                             self,
                             cb.progress_bar,
                             "move_on_y",
-                            "Vertical offset",
+                            "Move vertically",
                             plugin,
                             { min = -300, max = 300 }
                         ),
@@ -1154,12 +1159,6 @@ function SettingsManager:getBadgesMenu(plugin)
             text = _("Percentage badge"),
             sub_item_table = groupFeatureMenuItems {
                 checkboxItem(self, cb.percent_badge, "enabled", "Enable percentage badge", plugin),
-                choiceItem(self, cb.percent_badge, "position", "Position", {
-                    { label = "Top left", value = "top_left" },
-                    { label = "Top right", value = "top_right" },
-                    { label = "Bottom left", value = "bottom_left" },
-                    { label = "Bottom right", value = "bottom_right" },
-                }, plugin),
                 {
                     text = _("Custom percent badge icon"),
                     sub_item_table = groupFeatureMenuItems {
@@ -1167,9 +1166,15 @@ function SettingsManager:getBadgesMenu(plugin)
                         iconNameItem(self, cb.percent_badge, "custom_icon_name", "Icon name", plugin),
                     },
                 },
+                choiceItem(self, cb.percent_badge, "position", "Position", {
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom right", value = "bottom_right" },
+                }, plugin),
                 numberItem(self, cb.percent_badge, "text_size", "Font size", plugin, { min = 6, max = 40 }),
-                numberItem(self, cb.percent_badge, "move_on_x", "Horizontal offset", plugin, { min = -300, max = 300 }),
-                numberItem(self, cb.percent_badge, "move_on_y", "Vertical offset", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.percent_badge, "move_on_x", "Move horizontally", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.percent_badge, "move_on_y", "Move vertically", plugin, { min = -300, max = 300 }),
                 numberItem(self, cb.percent_badge, "badge_w", "Badge width", plugin, { min = 20, max = 200 }),
                 numberItem(self, cb.percent_badge, "badge_h", "Badge height", plugin, { min = 20, max = 200 }),
                 numberItem(self, cb.percent_badge, "bump_up", "Move % text up", plugin, { min = 0, max = 20 }),
@@ -1195,8 +1200,8 @@ function SettingsManager:getBadgesMenu(plugin)
                     plugin,
                     { min = 0, max = 30 }
                 ),
-                numberItem(self, cb.pages_badge, "x_offset", "Horizontal offset", plugin, { min = -300, max = 300 }),
-                numberItem(self, cb.pages_badge, "y_offset", "Vertical offset", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.pages_badge, "x_offset", "Move horizontally", plugin, { min = -300, max = 300 }),
+                numberItem(self, cb.pages_badge, "y_offset", "Move vertically", plugin, { min = -300, max = 300 }),
                 {
                     text = _("Colors"),
                     sub_item_table = {
@@ -1214,6 +1219,12 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Off", value = "off" },
                     { label = "Badge", value = "badge" },
                     { label = "Flap", value = "bar" },
+                }, plugin),
+                choiceItem(self, cb.series_indicator, "position", "Position", {
+                    { label = "Top left", value = "top_left" },
+                    { label = "Top right", value = "top_right" },
+                    { label = "Bottom left", value = "bottom_left" },
+                    { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
                 numberItem(self, cb.series_indicator, "font_size", "Font size", plugin, { min = 6, max = 40 }),
                 numberItem(
@@ -1256,6 +1267,7 @@ function SettingsManager:getBadgesMenu(plugin)
                     { label = "Bottom center", value = "bottom_center" },
                     { label = "Bottom right", value = "bottom_right" },
                 }, plugin),
+				numberItem(self, cb.status_icons, "size", "Icon size", plugin, { min = 8, max = 100 }),
                 {
                     text = _("Custom status icons"),
                     sub_item_table = groupFeatureMenuItems {
@@ -1265,7 +1277,6 @@ function SettingsManager:getBadgesMenu(plugin)
                         iconNameItem(self, cb.status_icons, "finished_icon_name", "Finished icon name", plugin),
                     },
                 },
-                numberItem(self, cb.status_icons, "size", "Size", plugin, { min = 8, max = 100 }),
             },
         },
         {
@@ -1292,12 +1303,12 @@ function SettingsManager:getBadgesMenu(plugin)
                     max = 100,
                     enabled_func = collectionStarEnabled,
                 }),
-                numberItem(self, star, "x_offset", "Horizontal offset", plugin, {
+                numberItem(self, star, "x_offset", "Move horizontally", plugin, {
                     min = 0,
                     max = 100,
                     enabled_func = collectionStarEnabled,
                 }),
-                numberItem(self, star, "y_offset", "Vertical offset", plugin, {
+                numberItem(self, star, "y_offset", "Move vertically", plugin, {
                     min = 0,
                     max = 100,
                     enabled_func = collectionStarEnabled,
@@ -1351,7 +1362,7 @@ function SettingsManager:getNavbarMenu(plugin)
             end,
         },
         {
-            text = _("Size"),
+            text = _("Bar size"),
             sub_item_table = {
                 {
                     text = "Tiny",
@@ -1438,105 +1449,48 @@ function SettingsManager:getNavbarMenu(plugin)
             enabled_func = function()
                 return navbar.show_labels
             end,
-            sub_item_table = {
-                {
-                    text = "12",
-                    checked_func = function()
-                        return navbar.label_font_size == 12
-                    end,
-                    callback = function()
-                        navbar.label_font_size = 12
-                        self_ref:save()
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                },
-                {
-                    text = "14",
-                    checked_func = function()
-                        return navbar.label_font_size == 14
-                    end,
-                    callback = function()
-                        navbar.label_font_size = 14
-                        self_ref:save()
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                },
-                {
-                    text = "16",
-                    checked_func = function()
-                        return navbar.label_font_size == 16
-                    end,
-                    callback = function()
-                        navbar.label_font_size = 16
-                        self_ref:save()
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                },
-                {
-                    text = "18",
-                    checked_func = function()
-                        return navbar.label_font_size == 18
-                    end,
-                    callback = function()
-                        navbar.label_font_size = 18
-                        self_ref:save()
-                        if plugin then
-                            plugin:refresh()
-                        end
-                    end,
-                },
-                {
-                    text = _("Custom"),
-                    keep_menu_open = true,
-                    callback = function(touchmenu)
-                        local dlg
-                        dlg = InputDialog:new {
-                            title = _("Font size"),
-                            input = tostring(navbar.label_font_size),
-                            hint = _("Enter font size (5-30)"),
-                            buttons = {
-                                {
-                                    {
-                                        text = _("Cancel"),
-                                        callback = function()
-                                            UIManager:close(dlg)
-                                        end,
-                                    },
-                                    {
-                                        text = _("Set"),
-                                        is_enter_default = true,
-                                        callback = function()
-                                            local size = tonumber(dlg:getInputText())
-                                            if size and size >= 5 and size <= 30 then
-                                                navbar.label_font_size = size
-                                                self_ref:save()
-                                                UIManager:close(dlg)
-                                                if touchmenu then
-                                                    touchmenu:updateItems()
-                                                end
-                                                if plugin then
-                                                    plugin:refresh()
-                                                end
-                                            end
-                                        end,
-                                    },
-                                },
+            keep_menu_open = true,
+            callback = function(touchmenu)
+                local dlg
+                dlg = InputDialog:new {
+                    title = _("Label font size"),
+                    input = tostring(navbar.label_font_size),
+                    hint = _("Enter font size (5-30)"),
+                    buttons = {
+                        {
+                            {
+                                text = _("Cancel"),
+                                callback = function()
+                                    UIManager:close(dlg)
+                                end,
                             },
-                        }
-                        UIManager:show(dlg)
-                        dlg:onShowKeyboard()
-                    end,
-                },
-            },
+                            {
+                                text = _("Set"),
+                                is_enter_default = true,
+                                callback = function()
+                                    local size = tonumber(dlg:getInputText())
+                                    if size and size >= 5 and size <= 30 then
+                                        navbar.label_font_size = size
+                                        self_ref:save()
+                                        UIManager:close(dlg)
+                                        if touchmenu then
+                                            touchmenu:updateItems()
+                                        end
+                                        if plugin then
+                                            plugin:refresh()
+                                        end
+                                    end
+                                end,
+                            },
+                        },
+                    },
+                }
+                UIManager:show(dlg)
+                dlg:onShowKeyboard()
+            end,
         },
         {
-            text = _("Show top divder"),
+            text = _("Show top divider"),
             checked_func = function()
                 return navbar.show_top_border
             end,

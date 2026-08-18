@@ -258,16 +258,31 @@ local function initSeriesBadge(self_widget, c)
     end
 end
 
-local function paintSeriesBadge(self_widget, bb)
+local function paintSeriesBadge(self_widget, bb, c)
     local target = self_widget[1] and self_widget[1][1] and self_widget[1][1][1]
     if not target or not target.dimen then
         return
     end
 
+    local scfg = c.series_indicator
+    local position = scfg.position or "top_right"
     local d_w = math.ceil(target.dimen.w / 5)
     local d_h = math.ceil(target.dimen.h / 10)
-    local ix = BD.mirroredUILayout() and -math.floor(d_w) or (target.dimen.w - math.floor(d_w))
-    local iy = 5
+    local ix, iy
+
+    if position == "top_left" then
+        ix = 0
+        iy = 5
+    elseif position == "bottom_left" then
+        ix = 0
+        iy = target.dimen.h - d_h - 5
+    elseif position == "bottom_right" then
+        ix = target.dimen.w - d_w
+        iy = target.dimen.h - d_h - 5
+    else -- top_right (default)
+        ix = BD.mirroredUILayout() and -math.floor(d_w) or (target.dimen.w - math.floor(d_w))
+        iy = 5
+    end
 
     local badge_size = self_widget.series_badge:getSize()
     local badge_x = math.floor(target.dimen.x + ix + (d_w - badge_size.w) / 2)
@@ -1768,7 +1783,7 @@ local function patchMosaicMenuItem()
         end
 
         if c.series_indicator.style == "badge" and self.has_series_badge and self.series_badge then
-            paintSeriesBadge(self, bb)
+            paintSeriesBadge(self, bb, c)
         elseif c.series_indicator.style == "bar" then
             local bookinfo = BookInfoManager:getBookInfo(self.filepath, self.do_cover_image)
             if bookinfo and bookinfo.series then
