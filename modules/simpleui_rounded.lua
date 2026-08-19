@@ -75,11 +75,18 @@ local function clipRoundedRect(bb, x, y, w, h, r, color)
     if 2 * r > h then r = math.floor(h / 2) end
     local cache = getCornerCache(r)
     local dr = cache.dr
+    local bb_w, bb_h = bb:getWidth(), bb:getHeight()
+    local function safePixel(px, py)
+        if px < 0 or py < 0 or px >= bb_w or py >= bb_h then
+            return Blitbuffer.COLOR_WHITE
+        end
+        return bb:getPixel(px, py)
+    end
     local colors = color and { color, color, color, color } or {
-        bb:getPixel(x - 1, y - 1),
-        bb:getPixel(x + w + 1, y - 1),
-        bb:getPixel(x - 1, y + h + 1),
-        bb:getPixel(x + w + 1, y + h + 1),
+        safePixel(x - 1, y - 1),
+        safePixel(x + w + 1, y - 1),
+        safePixel(x - 1, y + h + 1),
+        safePixel(x + w + 1, y + h + 1),
     }
     applyCornerMask(bb, cache.clip, x, y, r, dr, colors[1], true, true)
     applyCornerMask(bb, cache.clip, x + w - r, y, r, dr, colors[2], false, true)

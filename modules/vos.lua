@@ -3,8 +3,16 @@
 local AlphaContainer = require("ui/widget/container/alphacontainer")
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
-local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
-local has_bookinfomanager = ok_bim and BookInfoManager ~= nil
+local BookInfoManager = nil
+local has_bookinfomanager = nil
+local function getBookInfoManager()
+    if has_bookinfomanager == nil then
+        local ok, bim = pcall(require, "bookinfomanager")
+        BookInfoManager = ok and bim or nil
+        has_bookinfomanager = BookInfoManager ~= nil
+    end
+    return has_bookinfomanager and BookInfoManager or nil
+end
 local CenterContainer = require("ui/widget/container/centercontainer")
 local CustomPositionContainer = require("ui/widget/container/custompositioncontainer")
 local FileChooser = require("ui/widget/filechooser")
@@ -34,10 +42,6 @@ local SETTINGS_MANAGER = nil
 -- every grid render, so large covers never hit the ImageCache nor re-decode).
 local folder_cover_cache = {}
 
-local function widgetSize(w)
-    local s = w:getSize()
-    return s.w, s.h
-end
 local MAX_IMG_W, MAX_IMG_H -- book-cover max cell size, set in init()
 
 local function getCfg()
@@ -223,11 +227,19 @@ local function clipRoundedRect(bb, x, y, w, h, r, color)
     local cache = getCornerCache(r)
     local dr = cache.dr
 
+    local bb_w, bb_h = bb:getWidth(), bb:getHeight()
+    local function safePixel(px, py)
+        if px < 0 or py < 0 or px >= bb_w or py >= bb_h then
+            return Blitbuffer.COLOR_WHITE
+        end
+        return bb:getPixel(px, py)
+    end
+
     local colors = color and { color, color, color, color } or {
-        bb:getPixel(x - 1, y - 1),
-        bb:getPixel(x + w + 1, y - 1),
-        bb:getPixel(x - 1, y + h + 1),
-        bb:getPixel(x + w + 1, y + h + 1),
+        safePixel(x - 1, y - 1),
+        safePixel(x + w + 1, y - 1),
+        safePixel(x - 1, y + h + 1),
+        safePixel(x + w + 1, y + h + 1),
     }
 
     applyCornerMask(bb, cache.clip, x, y, r, dr, colors[1], true, true)
@@ -259,8 +271,9 @@ local function paintRoundedCorners(bb, target, x, y, self_widget, c)
 end
 
 local function initSeriesBadge(self_widget, c)
-    if not has_bookinfomanager then return end
-    local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
+    local bim = getBookInfoManager()
+    if not bim then return end
+    local bookinfo = bim:getBookInfo(self_widget.filepath, false)
     if bookinfo and bookinfo.series and bookinfo.series_index then
         local scfg = c.series_indicator
         self_widget.series_index = bookinfo.series_index
@@ -405,18 +418,21 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
 
     if pcfg.dynamic_sizing then
         local pages
-        if self_widget.filepath and has_bookinfomanager then
-            local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
-            if bookinfo and bookinfo.pages then
-                pages = tonumber(bookinfo.pages)
-            end
-            if not pages then
-                -- CoverBrowser does not store pages for EPUB (crengine), so
-                -- fall back to a page-count token in the filename, e.g. "P(170)".
-                pages = self_widget.filepath:match("[Pp]%((%d+)%)")
-                    or self_widget.filepath:match("(%d+)%s*[Pp]ages?")
-                if pages then
-                    pages = tonumber(pages)
+        if self_widget.filepath then
+            local bim = getBookInfoManager()
+            if bim then
+                local bookinfo = bim:getBookInfo(self_widget.filepath, false)
+                if bookinfo and bookinfo.pages then
+                    pages = tonumber(bookinfo.pages)
+                end
+                if not pages then
+                    -- CoverBrowser does not store pages for EPUB (crengine), so
+                    -- fall back to a page-count token in the filename, e.g. "P(170)".
+                    pages = self_widget.filepath:match("[Pp]%((%d+)%)")
+                        or self_widget.filepath:match("(%d+)%s*[Pp]ages?")
+                    if pages then
+                        pages = tonumber(pages)
+                    end
                 end
             end
         end
@@ -443,36 +459,25 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
     local p = math.max(0, math.min(1, pf))
     local fill_w = math.max(1, math.floor(bar_w * p + 0.5))
 
+    paintRoundedBadgeRGB32(
+        bb,
+        bar_x - BORDER_W,
+        bar_y - BORDER_W,
+        bar_w + 2 * BORDER_W,
+        BAR_H + 2 * BORDER_W,
+        BORDER_W,
+        rgbFromHex(pcfg.border_color),
+        rgbFromHex(pcfg.track_color),
+        BAR_RADIUS + BORDER_W
+    )
+    local fill_rgb
     if pcfg.colored then
-        paintRoundedBadgeRGB32(
-            bb,
-            bar_x - BORDER_W,
-            bar_y - BORDER_W,
-            bar_w + 2 * BORDER_W,
-            BAR_H + 2 * BORDER_W,
-            BORDER_W,
-            rgbFromHex(pcfg.border_color),
-            rgbFromHex(pcfg.track_color),
-            BAR_RADIUS + BORDER_W
-        )
-        local fill_rgb = (self_widget.status == "abandoned") and pcfg.abandoned_color_rgb or pcfg.fill_color_rgb
-        paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
+        fill_rgb = (self_widget.status == "abandoned") and pcfg.abandoned_color_rgb or pcfg.fill_color_rgb
     else
-        paintRoundedBadgeRGB32(
-            bb,
-            bar_x - BORDER_W,
-            bar_y - BORDER_W,
-            bar_w + 2 * BORDER_W,
-            BAR_H + 2 * BORDER_W,
-            BORDER_W,
-            rgbFromHex(pcfg.border_color),
-            rgbFromHex(pcfg.track_color),
-            BAR_RADIUS + BORDER_W
-        )
-        local fill_rgb = (self_widget.status == "abandoned") and rgbFromHex(pcfg.abandoned_color)
+        fill_rgb = (self_widget.status == "abandoned") and rgbFromHex(pcfg.abandoned_color)
             or rgbFromHex(pcfg.fill_color)
-        paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
     end
+    paintRoundedRectRGB32(bb, bar_x, bar_y, fill_w, BAR_H, fill_rgb, BAR_RADIUS)
 end
 
 local percent_badge_cache = {}
@@ -536,10 +541,16 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
     end
 
     local pcfg = c.percent_badge
-    local corner_mark_size = Screen:scaleBySize(20)
 
     local percent_text = string.format("%d%%", math.floor(self_widget.percent_finished * 100))
     local font_size = pcfg.text_size
+
+    local BADGE_W = Screen:scaleBySize(pcfg.badge_w)
+    local BADGE_H = Screen:scaleBySize(pcfg.badge_h)
+    local INSET_X = Screen:scaleBySize(pcfg.move_on_x)
+    local INSET_Y = Screen:scaleBySize(pcfg.move_on_y)
+    local TEXT_PAD = Screen:scaleBySize(6)
+
     local percent_widget = TextWidget:new {
         text = percent_text,
         font_size = font_size,
@@ -547,15 +558,9 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
         alignment = "center",
         fgcolor = Blitbuffer.COLOR_BLACK,
         bold = true,
-        max_width = corner_mark_size,
-        truncate_with_ellipsis = true,
+        max_width = BADGE_W - 2 * TEXT_PAD,
+        truncate_with_ellipsis = false,
     }
-
-    local BADGE_W = Screen:scaleBySize(pcfg.badge_w)
-    local BADGE_H = Screen:scaleBySize(pcfg.badge_h)
-    local INSET_X = Screen:scaleBySize(pcfg.move_on_x)
-    local INSET_Y = Screen:scaleBySize(pcfg.move_on_y)
-    local TEXT_PAD = Screen:scaleBySize(6)
 
     local fx = x + math.floor((self_widget.width - target.dimen.w) / 2)
     local fy = y + math.floor((self_widget.height - target.dimen.h) / 2)
@@ -581,10 +586,6 @@ local function paintPercentBadge(bb, target, x, y, self_widget, c)
         bb:pmulalphablitFrom(percent_badge.image, bx, by, 0, 0, BADGE_W, BADGE_H)
     end
 
-    percent_widget.alignment = "center"
-    percent_widget.truncate_with_ellipsis = false
-    percent_widget.max_width = BADGE_W - 2 * TEXT_PAD
-
     local ts = percent_widget:getSize()
     local tx = bx + math.floor((BADGE_W - ts.w) / 2)
     local ty = by + math.floor((BADGE_H - ts.h) / 2) - Screen:scaleBySize(pcfg.bump_up)
@@ -605,10 +606,13 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     local pcfg = c.pages_badge
     local page_count
 
-    if self_widget.filepath and has_bookinfomanager then
-        local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
-        if bookinfo and bookinfo.pages then
-            page_count = bookinfo.pages
+    if self_widget.filepath then
+        local bim = getBookInfoManager()
+        if bim then
+            local bookinfo = bim:getBookInfo(self_widget.filepath, false)
+            if bookinfo and bookinfo.pages then
+                page_count = bookinfo.pages
+            end
         end
     end
     if not page_count and self_widget.text then
@@ -618,7 +622,6 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
         return
     end
 
-    local corner_mark_size = Screen:scaleBySize(10)
     local page_text = page_count .. " p."
     local font_size = pcfg.font_size
 
@@ -812,13 +815,14 @@ local function paintCollectionStar(bb, self_widget)
 end
 
 local function installDescriptionHintOverride()
-    if not has_bookinfomanager then return end
-    if BookInfoManager.patched_vos_hint then
+    local bim = getBookInfoManager()
+    if not bim then return end
+    if bim.patched_vos_hint then
         return
     end
-    BookInfoManager.patched_vos_hint = true
-    local orig_getSetting = BookInfoManager.getSetting
-    function BookInfoManager:getSetting(setting_name)
+    bim.patched_vos_hint = true
+    local orig_getSetting = bim.getSetting
+    function bim:getSetting(setting_name)
         if masterEnabled() and setting_name == "no_hint_description" and getCfg().disable_description_hint then
             return true
         end
@@ -910,8 +914,11 @@ local function getCachedFolderCoverFile(cover_file, w, h)
 end
 
 local function getCachedFolderCover(path, menu)
-    if not has_bookinfomanager then return end
-    local bookinfo = BookInfoManager:getBookInfo(path, true)
+    local bim = getBookInfoManager()
+    if not bim then
+        return
+    end
+    local bookinfo = bim:getBookInfo(path, true)
     if not (bookinfo and bookinfo.cover_bb) then
         return
     end
@@ -919,7 +926,7 @@ local function getCachedFolderCover(path, menu)
         bookinfo.has_cover
         and bookinfo.cover_fetched
         and not bookinfo.ignore_cover
-        and not BookInfoManager.isCachedCoverInvalid(bookinfo, menu.cover_specs)
+        and not bim.isCachedCoverInvalid(bookinfo, menu.cover_specs)
     then
         return {
             data = bookinfo.cover_bb,
@@ -989,8 +996,9 @@ local function newFolderCoverCell(source, width, height)
     local max_w = math.max(1, width - 2 * Size.border.thin)
     local max_h = math.max(1, height - 2 * Size.border.thin)
     local scale_factor
-    if has_bookinfomanager then
-        local _, __, sf = BookInfoManager.getCachedCoverSize(cover_w, cover_h, max_w, max_h)
+    local bim = getBookInfoManager()
+    if bim then
+        local _, __, sf = bim.getCachedCoverSize(cover_w, cover_h, max_w, max_h)
         scale_factor = sf
     else
         scale_factor = math.min(max_w / cover_w, max_h / cover_h)
@@ -1178,7 +1186,7 @@ local function setFolderCover(self_widget, img, c, entries)
             end
         end
     end
-    local item_count = file_count > 0 and file_count or folder_count
+    local item_count = file_count + folder_count
 
     if item_count > 0 then
         local nbitems = TextWidget:new {
@@ -1708,13 +1716,16 @@ local function patchMosaicMenuItem()
             if suppress_border and target then
                 target.bordersize = 0
             end
-            if suppress_series and has_bookinfomanager then
-                orig_get_setting = BookInfoManager.getSetting
-                BookInfoManager.getSetting = function(manager, setting_name, ...)
-                    if setting_name == "series_mode" then
-                        return nil
+            if suppress_series then
+                local bim = getBookInfoManager()
+                if bim then
+                    orig_get_setting = bim.getSetting
+                    bim.getSetting = function(manager, setting_name, ...)
+                        if setting_name == "series_mode" then
+                            return nil
+                        end
+                        return orig_get_setting(manager, setting_name, ...)
                     end
-                    return orig_get_setting(manager, setting_name, ...)
                 end
             end
             if suppress_status or suppress_large_book then
@@ -1765,7 +1776,10 @@ local function patchMosaicMenuItem()
                 ImageWidget.paintTo = orig_image_paint
             end
             if orig_get_setting then
-                BookInfoManager.getSetting = orig_get_setting
+                local bim = getBookInfoManager()
+                if bim then
+                    bim.getSetting = orig_get_setting
+                end
             end
             if suppress_border and target then
                 target.bordersize = saved_border_size
@@ -1819,10 +1833,13 @@ local function patchMosaicMenuItem()
 
         if c.series_indicator.style == "badge" and self.has_series_badge and self.series_badge then
             paintSeriesBadge(self, bb, c)
-        elseif c.series_indicator.style == "bar" and has_bookinfomanager then
-            local bookinfo = BookInfoManager:getBookInfo(self.filepath, self.do_cover_image)
-            if bookinfo and bookinfo.series then
-                paintSeriesIndicatorBar(self, bb, target, x)
+        elseif c.series_indicator.style == "bar" then
+            local bim = getBookInfoManager()
+            if bim then
+                local bookinfo = bim:getBookInfo(self.filepath, self.do_cover_image)
+                if bookinfo and bookinfo.series then
+                    paintSeriesIndicatorBar(self, bb, target, x)
+                end
             end
         end
 
