@@ -117,7 +117,7 @@ Custom navigation-tab icons, percentage-badge, and status icons belong in KORead
 
 ## Updates
 
-Use **VOS > About > Check for Updates** to compare the installed version with the latest published GitHub release. The checker reports availability and provides the release URL; it does not download or install updates automatically.
+Use **VOS > About > Check for Updates** to compare the installed version with the latest published GitHub release. The checker reports availability and provides option to download and install updates automatically.
 
 To update manually, replace the existing `vos.koplugin` directory with the new release and restart KOReader. Your settings file is stored separately and is preserved.
 
