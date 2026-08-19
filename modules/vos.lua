@@ -3,7 +3,8 @@
 local AlphaContainer = require("ui/widget/container/alphacontainer")
 local BD = require("ui/bidi")
 local Blitbuffer = require("ffi/blitbuffer")
-local BookInfoManager = require("bookinfomanager")
+local ok_bim, BookInfoManager = pcall(require, "bookinfomanager")
+local has_bookinfomanager = ok_bim and BookInfoManager ~= nil
 local CenterContainer = require("ui/widget/container/centercontainer")
 local CustomPositionContainer = require("ui/widget/container/custompositioncontainer")
 local FileChooser = require("ui/widget/filechooser")
@@ -228,6 +229,7 @@ local function paintRoundedCorners(bb, target, x, y, self_widget, c)
 end
 
 local function initSeriesBadge(self_widget, c)
+    if not has_bookinfomanager then return end
     local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
     if bookinfo and bookinfo.series and bookinfo.series_index then
         local scfg = c.series_indicator
@@ -373,7 +375,7 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
 
     if pcfg.dynamic_sizing then
         local pages
-        if self_widget.filepath then
+        if self_widget.filepath and has_bookinfomanager then
             local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
             if bookinfo and bookinfo.pages then
                 pages = tonumber(bookinfo.pages)
@@ -573,7 +575,7 @@ local function paintPagesBadge(bb, target, x, y, self_widget, c)
     local pcfg = c.pages_badge
     local page_count
 
-    if self_widget.filepath then
+    if self_widget.filepath and has_bookinfomanager then
         local bookinfo = BookInfoManager:getBookInfo(self_widget.filepath, false)
         if bookinfo and bookinfo.pages then
             page_count = bookinfo.pages
@@ -780,6 +782,7 @@ local function paintCollectionStar(bb, self_widget)
 end
 
 local function installDescriptionHintOverride()
+    if not has_bookinfomanager then return end
     if BookInfoManager.patched_vos_hint then
         return
     end
@@ -877,6 +880,7 @@ local function getCachedFolderCoverFile(cover_file, w, h)
 end
 
 local function getCachedFolderCover(path, menu)
+    if not has_bookinfomanager then return end
     local bookinfo = BookInfoManager:getBookInfo(path, true)
     if not (bookinfo and bookinfo.cover_bb) then
         return
@@ -954,7 +958,13 @@ local function newFolderCoverCell(source, width, height)
     local cover_h = source.height or source.data:getHeight()
     local max_w = math.max(1, width - 2 * Size.border.thin)
     local max_h = math.max(1, height - 2 * Size.border.thin)
-    local _, __, scale_factor = BookInfoManager.getCachedCoverSize(cover_w, cover_h, max_w, max_h)
+    local scale_factor
+    if has_bookinfomanager then
+        local _, __, sf = BookInfoManager.getCachedCoverSize(cover_w, cover_h, max_w, max_h)
+        scale_factor = sf
+    else
+        scale_factor = math.min(max_w / cover_w, max_h / cover_h)
+    end
     local image = ImageWidget:new { image = source.data, scale_factor = scale_factor }
     source.data = nil
     local cover = FrameContainer:new {
@@ -1673,7 +1683,7 @@ local function patchMosaicMenuItem()
             if suppress_border and target then
                 target.bordersize = 0
             end
-            if suppress_series then
+            if suppress_series and has_bookinfomanager then
                 orig_get_setting = BookInfoManager.getSetting
                 BookInfoManager.getSetting = function(manager, setting_name, ...)
                     if setting_name == "series_mode" then
@@ -1784,7 +1794,7 @@ local function patchMosaicMenuItem()
 
         if c.series_indicator.style == "badge" and self.has_series_badge and self.series_badge then
             paintSeriesBadge(self, bb, c)
-        elseif c.series_indicator.style == "bar" then
+        elseif c.series_indicator.style == "bar" and has_bookinfomanager then
             local bookinfo = BookInfoManager:getBookInfo(self.filepath, self.do_cover_image)
             if bookinfo and bookinfo.series then
                 paintSeriesIndicatorBar(self, bb, target, x)

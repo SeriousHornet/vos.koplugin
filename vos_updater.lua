@@ -1,12 +1,4 @@
--- vos_updater.lua — VOS OTA Updater
---
--- Two modes:
--- 1. Silent automatic check on startup (24 h throttle via G_reader_settings).
---    If an update is available, a banner appears in the About menu.
--- 2. Manual check — click the version line in the About menu.
---    Always hits the network, shows a dialog with release notes + install button.
---
--- Install flow: download ZIP → unzip over plugin dir → prompt restart.
+-- VOS OTA Updater
 
 local InfoMessage = require("ui/widget/infomessage")
 local ConfirmBox = require("ui/widget/confirmbox")
@@ -18,7 +10,8 @@ local T = require("ffi/util").template
 -- Configuration
 local GITHUB_OWNER = "SeriousHornet"
 local GITHUB_REPO = "vos.koplugin"
-local ASSET_NAME = "vos.koplugin.zip"
+local ASSET_PREFIX = "vos.koplugin"
+local ASSET_EXT = ".zip"
 local AUTO_CHECK_INTERVAL = 24 * 3600
 
 local GS_LAST_CHECK = "vos_upd_last_check"
@@ -242,7 +235,7 @@ local function _parseRelease(body)
             return nil, "could not parse tag_name"
         end
         local asset_pat = '"browser_download_url"%s*:%s*"([^"]*'
-            .. ASSET_NAME:gsub("%.", "%%.") .. '[^"]*)"'
+            .. ASSET_PREFIX:gsub("%.", "%%.") .. '[^"]*' .. ASSET_EXT:gsub("%.", "%%.") .. '[^"]*)"' 
         local download_url = body:match(asset_pat)
         local notes = body:match('"body"%s*:%s*"(.-)"%s*[,}]')
         if notes then
@@ -264,7 +257,7 @@ local function _parseRelease(body)
     end
     local download_url
     for _, asset in ipairs(data.assets or {}) do
-        if asset.name == ASSET_NAME then
+        if asset.name:find(ASSET_PREFIX, 1, true) and asset.name:sub(-#ASSET_EXT) == ASSET_EXT then
             download_url = asset.browser_download_url
             break
         end
@@ -448,22 +441,10 @@ local function _showInstallDialog(release, current)
     local notes_block = notes and ("\n\n" .. _("What's new:") .. "\n" .. notes) or ""
 
     if not download_url then
-        UIManager:show(ConfirmBox:new {
+        UIManager:show(InfoMessage:new {
             text = header .. notes_block
                 .. "\n\n"
-                .. _("No download file found.\n\nOpen the releases page?"),
-            ok_text = _("Open in browser"),
-            cancel_text = _("Cancel"),
-            ok_callback = function()
-                local Device = require("device")
-                if Device.canOpenLink and Device:canOpenLink() then
-                    Device:openLink(string.format(
-                        "https://github.com/%s/%s/releases/latest",
-                        GITHUB_OWNER,
-                        GITHUB_REPO
-                    ))
-                end
-            end,
+                .. _("Download file not found on the release page.\n\nPlease update manually from the VOS GitHub Repo."),
         })
         return
     end
@@ -504,7 +485,6 @@ local function _doNetworkCheck()
 end
 
 --- Returns a menu item when an update is available, nil otherwise.
---- Zero I/O after first call (in-memory cache).
 function M.buildBannerItem()
     _loadPersistedState()
     if not _has_update then
@@ -520,7 +500,7 @@ function M.buildBannerItem()
     }
 end
 
---- Manual check — click the version line in the About menu.
+--- Manual check — click check updates in the About menu.
 function M.showInstallDialog(current_version)
     local ok_nm, NetworkMgr = pcall(require, "ui/network/manager")
     local function doCheck()
@@ -576,7 +556,6 @@ function M.showInstallDialog(current_version)
 end
 
 --- Silent automatic check — called once on plugin startup.
---- 24 h throttle via G_reader_settings. Never shows UI or prompts for Wi-Fi.
 --- Opt-in: only runs when the user enables it (default: off), so VOS stays
 --- completely silent/offline on devices that don't want a network check.
 function M.scheduleAutoCheck()
