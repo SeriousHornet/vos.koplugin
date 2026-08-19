@@ -166,44 +166,81 @@ function ColorTextWidget:paintTo(bb, x, y)
     tmp_bb:free()
 end
 
-local rounded_corner_cache = {}
+--- Algorithmic rounded-corner mask (background-agnostic, no SVG files needed) ---
 
-local function getRoundedCornerIcons(size)
-    if rounded_corner_cache[size] then
-        return rounded_corner_cache[size]
+local _corner_cache = {}
+
+local function getCornerCache(r)
+    local dr = math.max(1, math.floor(r))
+    if _corner_cache[dr] then return _corner_cache[dr] end
+
+    local r2 = dr * dr
+    local clip = {}
+    for dy = 0, dr - 1 do
+        for dx = 0, dr - 1 do
+            local idx = dy * dr + dx + 1
+            clip[idx] = (dx * dx + dy * dy) > r2
+        end
     end
-    local icons = {}
-    for __, corner in ipairs { "tl", "tr", "bl", "br" } do
-        local name = "rounded.corner." .. corner
-        icons[corner] = IconWidget:new {
-            icon = name,
-            file = vosicons.iconFile(name),
-            width = size,
-            height = size,
-            alpha = true,
-        }
-    end
-    rounded_corner_cache[size] = icons
-    return icons
+    _corner_cache[dr] = { clip = clip, dr = dr }
+    return _corner_cache[dr]
 end
 
-local function clearRoundedCornerCache()
-    for size, icons in pairs(rounded_corner_cache) do
-        for __, icon in pairs(icons) do
-            icon:free()
+local function applyCornerMask(bb, mask, sx, sy, r, dr, color, flip_x, flip_y)
+    local step = r / dr
+    local idx = 0
+    for dy = 0, dr - 1 do
+        local fy = flip_y and (dr - 1 - dy) or dy
+        for dx = 0, dr - 1 do
+            idx = idx + 1
+            if mask[idx] then
+                local fx = flip_x and (dr - 1 - dx) or dx
+                if step <= 1.0 then
+                    bb:setPixelClamped(sx + fx, sy + fy, color)
+                else
+                    local fx0 = math.floor(fx * step)
+                    local fx1 = math.floor((fx + 1) * step) - 1
+                    local fy0 = math.floor(fy * step)
+                    local fy1 = math.floor((fy + 1) * step) - 1
+                    for bfy = fy0, fy1 do
+                        for bfx = fx0, fx1 do
+                            bb:setPixelClamped(sx + bfx, sy + bfy, color)
+                        end
+                    end
+                end
+            end
         end
-        rounded_corner_cache[size] = nil
     end
+end
+
+--- Clip the four corners of a rectangle to a rounded shape.
+--- When color is nil, samples the background pixel just outside each corner.
+local function clipRoundedRect(bb, x, y, w, h, r, color)
+    if r <= 0 then return end
+    if 2 * r > w then r = math.floor(w / 2) end
+    if 2 * r > h then r = math.floor(h / 2) end
+
+    local cache = getCornerCache(r)
+    local dr = cache.dr
+
+    local colors = color and { color, color, color, color } or {
+        bb:getPixel(x - 1, y - 1),
+        bb:getPixel(x + w + 1, y - 1),
+        bb:getPixel(x - 1, y + h + 1),
+        bb:getPixel(x + w + 1, y + h + 1),
+    }
+
+    applyCornerMask(bb, cache.clip, x, y, r, dr, colors[1], true, true)
+    applyCornerMask(bb, cache.clip, x + w - r, y, r, dr, colors[2], false, true)
+    applyCornerMask(bb, cache.clip, x, y + h - r, r, dr, colors[3], true, false)
+    applyCornerMask(bb, cache.clip, x + w - r, y + h - r, r, dr, colors[4], false, false)
 end
 
 local function paintRoundedCorners(bb, target, x, y, self_widget, c)
-    local corner_size =
-        math.max(1, math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), target.dimen.w, target.dimen.h)))
-    local icons = getRoundedCornerIcons(corner_size)
-    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
-    if not (TL and TR and BL and BR) then
-        return
-    end
+    local rc = c.rounded_corners
+    local corner_radius = math.max(1, math.floor(
+        math.min(Screen:scaleBySize(rc.size), target.dimen.w, target.dimen.h)))
+    if corner_radius <= 0 then return end
 
     local fx = x + math.floor((self_widget.width - target.dimen.w) / 2)
     local fy = y + math.floor((self_widget.height - target.dimen.h) / 2)
@@ -213,19 +250,12 @@ local function paintRoundedCorners(bb, target, x, y, self_widget, c)
     local ix, iy = math.floor(fx + pad), math.floor(fy + pad)
     local iw, ih = math.max(1, fw - 2 * pad), math.max(1, fh - 2 * pad)
 
-    local cover_border = Screen:scaleBySize(0.5)
-    if not self_widget.is_directory then
-        bb:paintBorder(ix, iy, iw, ih, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
-    end
+    clipRoundedRect(bb, fx, fy, fw, fh, corner_radius)
 
-    local trw = select(1, widgetSize(TR))
-    local blh = select(2, widgetSize(BL))
-    local brw, brh = widgetSize(BR)
-
-    TL:paintTo(bb, fx, fy)
-    TR:paintTo(bb, fx + fw - trw, fy)
-    BL:paintTo(bb, fx, fy + fh - blh)
-    BR:paintTo(bb, fx + fw - brw, fy + fh - brh)
+    local border_w = Screen:scaleBySize(rc.border_width or 0.5)
+    local border_color = colorFromHex(rc.border_color)
+    local border_radius = math.max(0, corner_radius - Screen:scaleBySize(2))
+    bb:paintBorder(ix, iy, iw, ih, border_w, border_color, border_radius, false)
 end
 
 local function initSeriesBadge(self_widget, c)
@@ -1264,25 +1294,18 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
     local image_x = fx + math.floor((frame_dimen.w - image_size.w) / 2)
     local image_y = fy + math.floor((frame_dimen.h - image_size.h) / 2)
 
+    local rc = c.rounded_corners
+    local corner_radius = math.max(1, math.floor(
+        math.min(Screen:scaleBySize(rc.size), image_size.w, image_size.h)))
+    if corner_radius <= 0 then return end
+
+    clipRoundedRect(bb, image_x, image_y, image_size.w, image_size.h, corner_radius)
+
     local cover_border = Screen:scaleBySize(c.folder_covers.folder_border)
-    bb:paintBorder(image_x, image_y, image_size.w, image_size.h, cover_border, Blitbuffer.COLOR_BLACK, 0, false)
-
-    local corner_size =
-        math.max(1, math.floor(math.min(Screen:scaleBySize(c.rounded_corners.size), image_size.w, image_size.h)))
-    local icons = getRoundedCornerIcons(corner_size)
-    local TL, TR, BL, BR = icons.tl, icons.tr, icons.bl, icons.br
-    if not (TL and TR and BL and BR) then
-        return
-    end
-
-    local trw = select(1, widgetSize(TR))
-    local blh = select(2, widgetSize(BL))
-    local brw, brh = widgetSize(BR)
-
-    TL:paintTo(bb, image_x, image_y)
-    TR:paintTo(bb, image_x + image_size.w - trw, image_y)
-    BL:paintTo(bb, image_x, image_y + image_size.h - blh)
-    BR:paintTo(bb, image_x + image_size.w - brw, image_y + image_size.h - brh)
+    local border_color = colorFromHex(rc.border_color)
+    local border_radius = math.max(0, corner_radius - Screen:scaleBySize(2))
+    bb:paintBorder(image_x, image_y, image_size.w, image_size.h,
+        cover_border, border_color, border_radius, false)
 end
 
 -- Folder covers repeatedly generate item tables. Keep a small per-chooser
@@ -1867,7 +1890,6 @@ end
 -- Hooks are process-wide and installed idempotently. Reinitialization clears
 -- plugin caches and updates retained pagination state before the UI rebuild.
 function CoverBrowserModule:reinit()
-    clearRoundedCornerCache()
     clearPercentBadgeCache()
     clearFolderCoverCache()
     local FileManager = require("apps/filemanager/filemanager")

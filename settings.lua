@@ -523,7 +523,9 @@ function SettingsManager:loadDefaults()
         coverbrowser = {
             rounded_corners = {
                 enabled = true,
-                size = 40,
+                size = 20,
+                border_width = 0.5,
+                border_color = "#000000",
             },
             cover_aspect_ratio = {
                 ratio_w = 2,
@@ -817,6 +819,7 @@ function SettingsManager:getMainMenu(plugin)
                 lines[#lines + 1] = _("Active features:")
                 if c.rounded_corners.enabled then
                     lines[#lines + 1] = T(_("  Rounded corners: %1px"), c.rounded_corners.size)
+                    lines[#lines + 1] = T(_("  Border width: %1, color: %2"), c.rounded_corners.border_width, c.rounded_corners.border_color)
                 end
                 if c.progress_bar.enabled then
                     lines[#lines + 1] = T(_("  Progress bar: %1"), c.progress_bar.position)
@@ -988,7 +991,9 @@ function SettingsManager:getCoverEnhancementsMenu(plugin)
             text = _("Rounded corners"),
             sub_item_table = {
                 checkboxItem(self, cb.rounded_corners, "enabled", "Enable rounded corners", plugin),
-                numberItem(self, cb.rounded_corners, "size", "Corner size", plugin, { min = 8, max = 100 }),
+                numberItem(self, cb.rounded_corners, "size", "Corner radius", plugin, { min = 0, max = 100 }),
+                numberItem(self, cb.rounded_corners, "border_width", "Border width", plugin, { min = 0, max = 10 }),
+                colorItem(self, cb.rounded_corners, "border_color", "Border color", plugin),
             },
         },
         {

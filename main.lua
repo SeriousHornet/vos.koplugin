@@ -18,6 +18,7 @@ local QuickSettingsModule = require("modules/quick_settings")
 local FileManagerTitleBar = require("modules/titlebar")
 local ExcludeFoldersModule = require("modules/exclude_folders")
 local BrowserDoubleTapModule = require("modules/browser_double_tap")
+local SimpleUIRoundedModule = require("modules/simpleui_rounded")
 
 local VisualOverhaul = WidgetContainer:extend {
     name = "vos",
@@ -46,6 +47,7 @@ function VisualOverhaul:init()
         FileManagerTitleBar:new { plugin = self, settings = self.settings },
         ExcludeFoldersModule:new { plugin = self, settings = self.settings },
         BrowserDoubleTapModule:new { plugin = self, settings = self.settings },
+        SimpleUIRoundedModule:new { plugin = self, settings = self.settings },
     }
     for _, module in ipairs(self.extra_modules) do
         module:init()
