@@ -474,6 +474,13 @@ function SettingsManager:loadDefaults()
                 show_warmth = true,
                 open_on_start = false,
             },
+            exclude_folders = {
+                enabled = false,
+            },
+            browser_double_tap = {
+                enabled = false,
+                timeout_ms = 500,
+            },
             filemanager_titlebar = {
                 enabled = true,
                 show = {
@@ -721,40 +728,64 @@ function SettingsManager:getMainMenu(plugin)
         {
             text = _("Extras"),
             sub_item_table_func = function()
-                local m = plugin.extra_modules or {}
-                local page_subs = m[7]
-                local browser_up = m[3]
-                local menu_text = m[6]
-                local menu_size = m[4]
+                local function findModule(name)
+                    for _, mod in ipairs(plugin.extra_modules or {}) do
+                        if mod.name == name then return mod end
+                    end
+                end
+                local function getMenuItem(name)
+                    local mod = findModule(name)
+                    return mod and mod.getMenuItem and mod:getMenuItem()
+                end
+                local items = {}
+
+                local font_item = getMenuItem("ui_font")
+                if font_item then items[#items + 1] = font_item end
+
+                local titlebar_item = getMenuItem("filemanager_titlebar")
+                if titlebar_item then items[#items + 1] = titlebar_item end
+
+                local quick_item = getMenuItem("quick_settings")
+                if quick_item then items[#items + 1] = quick_item end
+
                 local bf_items = {}
+                local page_subs = findModule("page_number_subtitles")
                 if page_subs and page_subs.getMenuItem then
                     local pi = page_subs:getMenuItem()
                     pi.text = _("Pagination in subtitles")
                     bf_items[#bf_items + 1] = pi
                 end
+                local browser_up = findModule("browser_up_folder")
                 if browser_up and browser_up.getMenuItem then
                     local bi = browser_up:getMenuItem()
                     for _, item in ipairs(bi.sub_item_table or {}) do
                         bf_items[#bf_items + 1] = item
                     end
                 end
+                local dt_item = getMenuItem("browser_double_tap")
+                if dt_item then bf_items[#bf_items + 1] = dt_item end
+                items[#items + 1] = { text = _("Browser folders"), sub_item_table = bf_items }
+
                 local menus_items = {}
+                local menu_text = findModule("menu_text_overrides")
                 if menu_text and menu_text.getMenuItem then
                     local mt = menu_text:getMenuItem()
                     for _, item in ipairs(mt.sub_item_table or {}) do
                         menus_items[#menus_items + 1] = item
                     end
                 end
+                local menu_size = findModule("menu_size")
                 if menu_size and menu_size.getMenuItem then
                     menus_items[#menus_items + 1] = menu_size:getMenuItem()
                 end
-                local items = {}
-                if m[1] and m[1].getMenuItem then items[#items + 1] = m[1]:getMenuItem() end
-                if m[9] and m[9].getMenuItem then items[#items + 1] = m[9]:getMenuItem() end
-                if m[8] and m[8].getMenuItem then items[#items + 1] = m[8]:getMenuItem() end
-                items[#items + 1] = { text = _("Browser folders"), sub_item_table = bf_items }
                 items[#items + 1] = { text = _("Menus"), sub_item_table = menus_items }
-                if m[5] and m[5].getMenuItem then items[#items + 1] = m[5]:getMenuItem() end
+
+                local exclude_item = getMenuItem("exclude_folders")
+                if exclude_item then items[#items + 1] = exclude_item end
+
+                local incognito_item = getMenuItem("incognito")
+                if incognito_item then items[#items + 1] = incognito_item end
+
                 return items
             end,
         },

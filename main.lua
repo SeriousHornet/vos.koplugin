@@ -16,6 +16,8 @@ local MenuTextOverrides = require("modules/menu_text_overrides")
 local PageNumberSubtitles = require("modules/page_number_subtitles")
 local QuickSettingsModule = require("modules/quick_settings")
 local FileManagerTitleBar = require("modules/titlebar")
+local ExcludeFoldersModule = require("modules/exclude_folders")
+local BrowserDoubleTapModule = require("modules/browser_double_tap")
 
 local VisualOverhaul = WidgetContainer:extend {
     name = "vos",
@@ -42,6 +44,8 @@ function VisualOverhaul:init()
         PageNumberSubtitles:new { plugin = self, settings = self.settings },
         QuickSettingsModule:new { plugin = self, settings = self.settings },
         FileManagerTitleBar:new { plugin = self, settings = self.settings },
+        ExcludeFoldersModule:new { plugin = self, settings = self.settings },
+        BrowserDoubleTapModule:new { plugin = self, settings = self.settings },
     }
     for _, module in ipairs(self.extra_modules) do
         module:init()

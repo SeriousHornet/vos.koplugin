@@ -1083,6 +1083,8 @@ local function setFolderCover(self_widget, img, c, entries)
         if bb then
             image = ImageWidget:new {
                 image = bb,
+                width = frame_dimen.w,
+                height = frame_dimen.h,
                 image_disposable = false, -- we own it via folder_cover_cache
                 stretch_limit_percentage = rcfg.stretch_limit,
             }
@@ -1225,8 +1227,8 @@ local function updateFolderCover(self_widget, c)
 
     local cover_file = findFolderCoverFile(dir_path)
     if cover_file then
-        local success = pcall(setFolderCover, self_widget, { file = cover_file }, c, entries)
-        if success then
+        local ok = pcall(setFolderCover, self_widget, { file = cover_file }, c, entries)
+        if ok then
             self_widget._foldercover_processed = true
             return
         end
