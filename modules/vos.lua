@@ -926,7 +926,7 @@ local function getCachedFolderCover(path, menu)
         bookinfo.has_cover
         and bookinfo.cover_fetched
         and not bookinfo.ignore_cover
-        and not bim.isCachedCoverInvalid(bookinfo, menu.cover_specs)
+        and not (menu.cover_specs and bim.isCachedCoverInvalid(bookinfo, menu.cover_specs))
     then
         return {
             data = bookinfo.cover_bb,
