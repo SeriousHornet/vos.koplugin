@@ -161,6 +161,10 @@ function PageNumberSubtitles:init()
                     end
                     return switch_result
                 end
+                local module = PageNumberSubtitles.instance
+                if module then
+                    module:updateFileManagerSubtitle(self.ui, self.path)
+                end
             end
             return result
         end

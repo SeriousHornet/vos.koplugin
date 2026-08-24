@@ -524,7 +524,7 @@ function SettingsManager:loadDefaults()
             rounded_corners = {
                 enabled = true,
                 size = 20,
-                border_width = 0.5,
+                border_width = 0.75,
                 border_color = "#000000",
             },
             cover_aspect_ratio = {

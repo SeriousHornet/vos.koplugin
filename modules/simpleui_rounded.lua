@@ -2,6 +2,7 @@
 -- Self-contained: includes its own corner-mask primitives so it works
 -- independently of the mosaic-menu code path in modules/vos.lua.
 
+local Blitbuffer = require("ffi/blitbuffer")
 local Screen = require("device").screen
 
 local SimpleUIRounded = { name = "simpleui_rounded" }
@@ -95,12 +96,11 @@ local function clipRoundedRect(bb, x, y, w, h, r, color)
 end
 
 local function colorFromHex(hex)
-    local Blitbuffer = require("ffi/blitbuffer")
     if not hex then return Blitbuffer.COLOR_BLACK end
     return Blitbuffer.colorFromString(hex)
 end
 
---- Patch SimpleUI's getBookCover to apply rounded corners.
+--- Patch SimpleUI's getBookCover / getCroppedBookCover to apply rounded corners.
 
 function SimpleUIRounded:init()
     local ok, SH = pcall(require, "modules/module_books_shared")
@@ -109,11 +109,9 @@ function SimpleUIRounded:init()
     SH._vos_rounded_patched = true
 
     local self_ref = self
-    local orig_getBookCover = SH.getBookCover
 
-    function SH.getBookCover(filepath, w, h)
-        local fc = orig_getBookCover(filepath, w, h)
-        if not fc then return nil end
+    local function patchCover(fc)
+        if not fc then return fc end
         if not self_ref:isEnabled() then return fc end
 
         local img = fc[1]
@@ -148,6 +146,16 @@ function SimpleUIRounded:init()
 
         fc.bordersize = 0
         return fc
+    end
+
+    local orig_getBookCover = SH.getBookCover
+    function SH.getBookCover(filepath, w, h)
+        return patchCover(orig_getBookCover(filepath, w, h))
+    end
+
+    local orig_getCroppedBookCover = SH.getCroppedBookCover
+    function SH.getCroppedBookCover(filepath, w, h, align)
+        return patchCover(orig_getCroppedBookCover(filepath, w, h, align))
     end
 end
 
