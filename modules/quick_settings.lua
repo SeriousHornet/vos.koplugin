@@ -197,14 +197,14 @@ local button_defs = {
         end,
     },
     zlibrary = {
-        icon = "quick_search",
+        icon = "quick_zlib",
         label = "Z-Lib",
         callback = function()
             UIManager:broadcastEvent(Event:new("ZlibrarySearch"))
         end,
     },
     calibre = {
-        icon = "quick_wifi",
+        icon = "quick_calibre",
         label = "Calibre",
         active_func = function()
             local wireless = package.loaded.wireless
@@ -221,7 +221,7 @@ local button_defs = {
         end,
     },
     notion = {
-        icon = "quick_cloud",
+        icon = "quick_notion",
         label = "Notion",
         callback = function()
             local ui = currentUI()
@@ -240,7 +240,7 @@ local button_defs = {
         end,
     },
     opds = {
-        icon = "quick_cloud",
+        icon = "quick_opds",
         label = "OPDS",
         callback = function()
             UIManager:broadcastEvent(Event:new("ShowOPDSCatalog"))
