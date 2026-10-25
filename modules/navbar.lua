@@ -1,6 +1,3 @@
--- Hooks and active navigation state are process-wide so recreated FileManager
--- instances share one navbar configuration.
-
 local Blitbuffer = require("ffi/blitbuffer")
 local CenterContainer = require("ui/widget/container/centercontainer")
 local ConfirmBox = require("ui/widget/confirmbox")
@@ -30,7 +27,6 @@ local VerticalSpan = require("ui/widget/verticalspan")
 local lfs = require("libs/libkoreader-lfs")
 local _ = require("gettext")
 
--- Global hooks always read the latest settings manager.
 local SETTINGS_MANAGER = nil
 local function cfg()
     return SETTINGS_MANAGER.settings.navbar
@@ -122,8 +118,6 @@ for _, tab in ipairs(tabs) do
     tabs_by_id[tab.id] = tab
 end
 
--- Rebuilds the custom-tab entries in `tabs`/`tabs_by_id` from cfg().custom_tabs.
--- Safe to call repeatedly (e.g. after the settings menu adds/removes a tab).
 local function registerCustomTabs()
     for i = #tabs, 1, -1 do
         if tabs[i].is_custom then
@@ -159,7 +153,6 @@ local function registerCustomTabs()
     end
 end
 
--- Forward declarations (mutually referencing functions defined further down)
 local injectNavbar
 local injectStandaloneNavbar
 local hookQuickRSSInit
@@ -505,9 +498,6 @@ local function onTabOpds()
     UIManager:show(dialog)
 end
 
--- Custom tab callback: folder tabs, Dispatcher-registered actions, and
--- direct plugin-method calls (fm_key/fm_method), matching the three ways
--- the settings UI can define a custom tab.
 local function onTabCustom(tab_id)
     local c = cfg()
     local ct
@@ -553,8 +543,6 @@ local function onTabCustom(tab_id)
         return
     end
 
-    -- Legacy dispatcher_action field (older custom-tab configs saved it
-    -- without a `source` key)
     if ct.dispatcher_action then
         local action = Dispatcher.settingsList and Dispatcher.settingsList[ct.dispatcher_action]
         if action then
@@ -682,8 +670,6 @@ local function createTabWidget(tab, tab_w, is_active)
 
     local use_bold = styled and c.active_tab_bold
 
-    -- Let KOReader resolve custom icons from <data>/icons. Built-in VOS tabs
-    -- keep using the plugin resources so they do not require copied files.
     local icon_file = tab.is_custom and vosicons.userIconFile(tab.icon) or vosicons.iconFile(tab.icon)
     local icon
     if active_color then
@@ -966,8 +952,6 @@ injectNavbar = function(fm)
     fm_ui[1] = VerticalGroup:new { align = "left", file_chooser, navbar }
 end
 
--- Reverse of injectNavbar: restore the FileManager layout to its pre-injection
--- state (file chooser directly inside the FrameContainer at full height).
 local function uninjectNavbar(fm)
     local fm_ui = fm[1]
     if not fm_ui or not fm._navbar_injected then
@@ -1086,8 +1070,6 @@ injectStandaloneNavbar = function(menu, view_tab_id)
     end
 
     menu._vos_navbar_original_child = menu[1]
-    -- Menu.init was deliberately given the reduced height by our global hook;
-    -- the native layout to restore when disabled is the full screen.
     menu._vos_navbar_original_height = Screen:getHeight()
     menu._vos_navbar_tab_id = view_tab_id
     standalone_views[menu] = true
@@ -1208,16 +1190,12 @@ hookQuickRSSInit = function()
     end
 end
 
--- Installs every global monkey-patch exactly once, no matter how many times
--- NavbarModule:init() is called across this KOReader session.
 local function installGlobalHooks()
     if GLOBAL_PATCHED then
         return
     end
     GLOBAL_PATCHED = true
 
-    -- Shrink the FileManager (and, if enabled, standalone History/Collections/
-    -- Rakuyomi) menu height to make room for the navbar before it lays out.
     local orig_menu_init = Menu.init
     function Menu:init()
         if navbarEnabled() and self.name == "filemanager" and not self.height then
@@ -1249,8 +1227,6 @@ local function installGlobalHooks()
         end
     end
 
-    -- Auto-switch the active tab when the file browser's path changes
-    -- (e.g. user drills into the manga/news folder directly).
     local orig_onPathChanged = FileManager.onPathChanged
     function FileManager:onPathChanged(path)
         if orig_onPathChanged then
@@ -1374,9 +1350,6 @@ function NavbarModule:init()
     end
 end
 
--- Called by main.lua's refresh(): recompute config-derived layout and
--- reinject into the current FileManager (global hooks are never reinstalled,
--- installGlobalHooks() is idempotent).
 function NavbarModule:reinit()
     registerCustomTabs()
     updateLayoutConstants()
