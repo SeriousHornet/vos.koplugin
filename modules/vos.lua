@@ -38,11 +38,9 @@ local logger = require("logger")
 
 local SETTINGS_MANAGER = nil
 
--- Cached small blitbuffers for folder cover files (decoded once, re-used on
--- every grid render, so large covers never hit the ImageCache nor re-decode).
 local folder_cover_cache = {}
 
-local MAX_IMG_W, MAX_IMG_H -- book-cover max cell size, set in init()
+local MAX_IMG_W, MAX_IMG_H 
 
 local function getCfg()
     return SETTINGS_MANAGER.settings.coverbrowser
@@ -52,7 +50,6 @@ local function masterEnabled()
     return SETTINGS_MANAGER and SETTINGS_MANAGER:isMasterEnabled()
 end
 
--- These gates remain live because process-wide hooks cannot be uninstalled.
 local function hidePaginationEnabled()
     return masterEnabled()
         and SETTINGS_MANAGER
@@ -170,7 +167,7 @@ function ColorTextWidget:paintTo(bb, x, y)
     tmp_bb:free()
 end
 
---- Algorithmic rounded-corner mask (background-agnostic, no SVG files needed) ---
+--- Algorithmic rounded-corner mask (background-agnostic)
 
 local _corner_cache = {}
 
@@ -218,7 +215,6 @@ local function applyCornerMask(bb, mask, sx, sy, r, dr, color, flip_x, flip_y)
 end
 
 --- Clip the four corners of a rectangle to a rounded shape.
---- When color is nil, samples the background pixel just outside each corner.
 local function clipRoundedRect(bb, x, y, w, h, r, color)
     if r <= 0 then return end
     if 2 * r > w then r = math.floor(w / 2) end
@@ -324,7 +320,7 @@ local function paintSeriesBadge(self_widget, bb, c)
     elseif position == "bottom_right" then
         ix = target.dimen.w - d_w
         iy = target.dimen.h - d_h - 5
-    else -- top_right (default)
+    else -- top_right
         ix = BD.mirroredUILayout() and -math.floor(d_w) or (target.dimen.w - math.floor(d_w))
         iy = 5
     end
@@ -426,8 +422,7 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
                     pages = tonumber(bookinfo.pages)
                 end
                 if not pages then
-                    -- CoverBrowser does not store pages for EPUB (crengine), so
-                    -- fall back to a page-count token in the filename, e.g. "P(170)".
+                    -- CoverBrowser does not store pages for EPUB (crengine), so fall back to a page-count token in the filename, e.g. "P(170)".
                     pages = self_widget.filepath:match("[Pp]%((%d+)%)")
                         or self_widget.filepath:match("(%d+)%s*[Pp]ages?")
                     if pages then
@@ -891,8 +886,6 @@ local function clearFolderCoverCache()
     folder_cover_cache = {}
 end
 
--- Decode a folder cover file at most once per target size, scaled down to the
--- requested dimensions (so only a small blitbuffer is ever retained).
 local function getCachedFolderCoverFile(cover_file, w, h)
     local key = cover_file .. "#" .. w .. "x" .. h
     local bb = folder_cover_cache[key]
@@ -1123,12 +1116,11 @@ local function setFolderCover(self_widget, img, c, entries)
                 image = bb,
                 width = frame_dimen.w,
                 height = frame_dimen.h,
-                image_disposable = false, -- we own it via folder_cover_cache
+                image_disposable = false,
                 stretch_limit_percentage = rcfg.stretch_limit,
             }
         else
-            -- Fallback: decode directly without caching in the ImageCache
-            -- (a large cover would exceed it and abort).
+
             image = ImageWidget:new {
                 file = img.file,
                 width = frame_dimen.w,
@@ -1316,8 +1308,6 @@ local function paintFolderCorners(self_widget, bb, x, y, c)
         cover_border, border_color, border_radius, false)
 end
 
--- Folder covers repeatedly generate item tables. Keep a small per-chooser
--- cache so long browsing sessions cannot retain every directory ever seen.
 local function installFileChooserCache()
     if FileChooser._vos_getlistitem_patched then
         return
@@ -1367,8 +1357,6 @@ local function installFileChooserCache()
     end
 end
 
--- Pagination widgets are retained so visibility can be toggled at runtime.
-
 local hide_pagination_names = {
     filemanager = true,
     history = true,
@@ -1376,21 +1364,15 @@ local hide_pagination_names = {
 }
 
 local function isHidePaginationMenu(menu)
-    -- Match by name, or by full-screen fm-style menus (e.g. collections
-    -- list has no name)
     return hide_pagination_names[menu.name]
         or (menu.covers_fullscreen and menu.is_borderless and menu.title_bar_fm_style)
 end
 
--- Capture the footer/page_return widgets of a target Menu (stored on the
--- instance) without removing them, so the pagination can be toggled live.
 local function vosPreparePaginationState(menu)
     if menu._vos_pagination_ready then
         return
     end
-    -- Only Menus have a _recalculateDimen method. Non-Menu widgets (e.g. the
-    -- FileManager itself, an InputContainer that wraps the FileChooser) must be
-    -- skipped: capturing nil would crash later in vosSetPaginationHidden.
+
     if not menu._recalculateDimen then
         return
     end
@@ -1424,8 +1406,6 @@ vosSetPaginationHidden = function(menu, hidden)
         return
     end
     if hidden then
-        -- The OverlapGroup contains: content_group, page_return, footer
-        -- Remove page_return and footer but keep content_group
         for i = #holder, 1, -1 do
             if holder[i] ~= menu.content_group then
                 table.remove(holder, i)
@@ -1467,27 +1447,12 @@ local function installHidePaginationOverride()
     function Menu:init()
         orig_menu_init(self)
         if isHidePaginationMenu(self) then
-            -- Reinitialization rebuilds the layout but retains instance fields.
             self._vos_pagination_ready = nil
             vosPreparePaginationState(self)
             vosSetPaginationHidden(self, hidePaginationEnabled())
         end
     end
 end
-
--- Upvalue-preserving method wrapping
--- Third-party userpatches (e.g. 2-browser-hide-underline.lua) locate module
--- internals by digging *named upvalues* out of MosaicMenuItem methods via
--- userpatch.getUpValue(MosaicMenuItem.update, "BookInfoManager"). Naively
--- replacing those methods with our own closures would hide the original
--- upvalues and crash such patches.
---
--- preserveUpvalues() therefore installs each of our hooks behind a thin
--- generated shell that carries one upvalue slot per name the original method
--- had, filled with the original values. Our real logic lives in a plain
--- closure reachable only through the shell's private `__vos_extra` slot, so
--- third-party upvalue diggers keep working untouched, no matter whether our
--- patch or theirs runs first.
 
 local loadstring = loadstring or _G.loadstring
 
@@ -1524,16 +1489,6 @@ local function preserveUpvalues(orig_fn, logic)
         return logic
     end
 
-    -- The shell re-exposes the original method's upvalue slots (same names,
-    -- same values) so third-party upvalue diggers keep working. It forwards
-    -- the real call arguments to a private dispatcher (`__vos_extra.invoke`)
-    -- which strips the upvalue-name prefix and calls `logic` with the method
-    -- arguments in their natural order.
-    --
-    -- NOTE: the real arguments MUST be passed as the trailing `...` of the
-    -- generated call. Lua 5.1 truncates a vararg used anywhere but the last
-    -- position of an argument list to a single value, which would silently
-    -- corrupt every argument after the first (e.g. paintTo's x/y).
     local names_src = table.concat(names, ", ")
     local chunk = "local "
         .. names_src
@@ -1574,7 +1529,9 @@ end
 
 local function patchMosaicMenuItem()
     local MosaicMenu = require("mosaicmenu")
-    local MosaicMenuItem = userpatch.getUpValue(MosaicMenu._updateItemsBuildUI, "MosaicMenuItem")
+    local builder = MosaicMenu._simpleui_native_build or MosaicMenu._updateItemsBuildUI
+    local MosaicMenuItem = userpatch.getUpValue(builder, "MosaicMenuItem")
+
     if not MosaicMenuItem then
         logger.warn("VisualOverhaul: could not find MosaicMenuItem")
         return
@@ -1594,10 +1551,6 @@ local function patchMosaicMenuItem()
 
     local CORNER_MARK_SIZE = userpatch.getUpValue(TRUE_ORIG_PAINTTO, "corner_mark_size") or Screen:scaleBySize(24)
 
-    -- Shared aspect-ratio closure swap for book covers. Installed
-    -- structurally once (debug.setupvalue can't be "undone" cleanly); its
-    -- effect is gated live by stretch_covers.enabled inside .init below,
-    -- so the setting stays toggleable at runtime.
     do
         local local_ImageWidget
         local n = 1
@@ -1904,8 +1857,6 @@ function CoverBrowserModule:init()
     installHidePaginationOverride()
 end
 
--- Hooks are process-wide and installed idempotently. Reinitialization clears
--- plugin caches and updates retained pagination state before the UI rebuild.
 function CoverBrowserModule:reinit()
     clearPercentBadgeCache()
     clearFolderCoverCache()
