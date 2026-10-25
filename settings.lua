@@ -1,4 +1,7 @@
+local ButtonDialog = require("ui/widget/buttondialog")
 local DataStorage = require("datastorage")
+local Dispatcher = require("dispatcher")
+local FileManager = require("apps/filemanager/filemanager")
 local Font = require("ui/font")
 local UIManager = require("ui/uimanager")
 local InputDialog = require("ui/widget/inputdialog")
@@ -523,8 +526,8 @@ function SettingsManager:loadDefaults()
         coverbrowser = {
             rounded_corners = {
                 enabled = true,
-                size = 20,
-                border_width = 0.75,
+                size = 15,
+                border_width = 0.5,
                 border_color = "#000000",
             },
             cover_aspect_ratio = {
@@ -1413,6 +1416,25 @@ end
 function SettingsManager:getNavbarMenu(plugin)
     local self_ref = self
     local navbar = self.settings.navbar
+    local function commitCustomTab(new_ct)
+        local found = false
+        for i, ct in ipairs(navbar.custom_tabs) do
+            if ct.id == new_ct.id then
+                navbar.custom_tabs[i] = new_ct
+                found = true
+                break
+            end
+        end
+        if not found then
+            table.insert(navbar.custom_tabs, new_ct)
+            navbar.show_tabs[new_ct.id] = true
+            table.insert(navbar.tab_order, new_ct.id)
+        end
+        self_ref:save()
+        if plugin then
+            plugin:refresh()
+        end
+    end
     local kaleido_colors = {
         { name = "Default Blue", color = { 0x33, 0x99, 0xFF } },
         { name = "Ocean Blue", color = { 0x1E, 0x88, 0xE5 } },
@@ -2099,20 +2121,7 @@ function SettingsManager:getNavbarMenu(plugin)
                                                                             source = "folder",
                                                                             folder_path = dir_path,
                                                                         }
-                                                                        local found = false
-                                                                        for i, ct in ipairs(navbar.custom_tabs) do
-                                                                            if ct.id == new_id then
-                                                                                navbar.custom_tabs[i] = new_ct
-                                                                                found = true
-                                                                                break
-                                                                            end
-                                                                        end
-                                                                        if not found then
-                                                                            table.insert(navbar.custom_tabs, new_ct)
-                                                                            navbar.show_tabs[new_id] = true
-                                                                            table.insert(navbar.tab_order, new_id)
-                                                                        end
-                                                                        self_ref:save()
+                                                                        commitCustomTab(new_ct)
                                                                         if touchmenu then
                                                                             touchmenu:updateItems()
                                                                         end
@@ -2142,6 +2151,375 @@ function SettingsManager:getNavbarMenu(plugin)
                             end,
                         }
                         UIManager:show(path_chooser)
+                    end,
+                })
+
+                table.insert(items, {
+                    text = _("+ Add action tab"),
+                    callback = function(touchmenu)
+                        local section_list = {
+                            { "general", _("General") },
+                            { "device", _("Device") },
+                            { "screen", _("Screen and lights") },
+                            { "filemanager", _("File browser") },
+                            { "reader", _("Reader") },
+                            { "rolling", _("Reflowable documents") },
+                            { "paging", _("Fixed layout documents") },
+                        }
+                        pcall(function() Dispatcher:init() end)
+                        local settingsList
+                        pcall(function()
+                            local fn_idx = 1
+                            while true do
+                                local name, val = debug.getupvalue(Dispatcher.registerAction, fn_idx)
+                                if not name then break end
+                                if name == "settingsList" then settingsList = val end
+                                fn_idx = fn_idx + 1
+                            end
+                        end)
+                        if not settingsList then
+                            UIManager:show(InfoMessage:new {
+                                text = _("No Dispatcher actions available."),
+                                timeout = 2,
+                            })
+                            return
+                        end
+                        local function makeLabelIconDialog(action_key, default_label)
+                            local label_dlg
+                            label_dlg = InputDialog:new {
+                                title = _("Tab label"),
+                                input = default_label,
+                                buttons = {
+                                    {
+                                        {
+                                            text = _("Cancel"),
+                                            callback = function()
+                                                UIManager:close(label_dlg)
+                                            end,
+                                        },
+                                        {
+                                            text = _("Next"),
+                                            is_enter_default = true,
+                                            callback = function()
+                                                local label = label_dlg:getInputText()
+                                                    or default_label
+                                                UIManager:close(label_dlg)
+                                                local icon_dlg
+                                                icon_dlg = InputDialog:new {
+                                                    title = _("Icon name"),
+                                                    hint = T(
+                                                        _("Place %1.svg or %1.png in %2"),
+                                                        "my_icon",
+                                                        DataStorage:getDataDir() .. "/icons"
+                                                    ),
+                                                    input = "lightning",
+                                                    buttons = {
+                                                        {
+                                                            {
+                                                                text = _("Cancel"),
+                                                                callback = function()
+                                                                    UIManager:close(icon_dlg)
+                                                                end,
+                                                            },
+                                                            {
+                                                                text = _("Add tab"),
+                                                                is_enter_default = true,
+                                                                callback = function()
+                                                                    local icon = icon_dlg:getInputText()
+                                                                        or "lightning"
+                                                                    UIManager:close(icon_dlg)
+                                                                    local new_id = "action_" .. action_key
+                                                                    local new_ct = {
+                                                                        id = new_id,
+                                                                        label = label,
+                                                                        icon = icon,
+                                                                        source = "dispatcher",
+                                                                        dispatcher_action = action_key,
+                                                                    }
+                                                                    commitCustomTab(new_ct)
+                                                                    if touchmenu then
+                                                                        touchmenu:updateItems()
+                                                                    end
+                                                                end,
+                                                            },
+                                                        },
+                                                    },
+                                                }
+                                                UIManager:show(icon_dlg)
+                                                icon_dlg:onShowKeyboard()
+                                            end,
+                                        },
+                                    },
+                                },
+                            }
+                            UIManager:show(label_dlg)
+                            label_dlg:onShowKeyboard()
+                        end
+                        local function openSectionActions(section_key, section_title)
+                            local action_buttons = {}
+                            for key, action in pairs(settingsList) do
+                                if action[section_key] and action.condition ~= false and action.title then
+                                    local ai = { text = action.title, action_key = key }
+                                    table.insert(action_buttons, {
+                                        {
+                                            text = ai.text,
+                                            callback = function()
+                                                makeLabelIconDialog(ai.action_key, ai.text)
+                                            end,
+                                        },
+                                    })
+                                end
+                            end
+                            if #action_buttons == 0 then return end
+                            table.sort(action_buttons, function(a, b) return a[1].text < b[1].text end)
+                            table.insert(action_buttons, {
+                                {
+                                    text = _("Cancel"),
+                                    callback = function() end,
+                                },
+                            })
+                            UIManager:show(ButtonDialog:new {
+                                title = section_title,
+                                title_align = "center",
+                                buttons = action_buttons,
+                            })
+                        end
+                         local section_dlg
+                        local section_buttons = {}
+                        for _, section in ipairs(section_list) do
+                            local section_key = section[1]
+                            local section_title = section[2]
+                            local count = 0
+                            for key, action in pairs(settingsList) do
+                                if action[section_key] and action.condition ~= false and action.title then
+                                    count = count + 1
+                                end
+                            end
+                            if count > 0 then
+                                table.insert(section_buttons, {
+                                    {
+                                        text = section_title .. " (" .. count .. ")",
+                                        callback = function()
+                                            UIManager:close(section_dlg)
+                                            openSectionActions(section_key, section_title)
+                                        end,
+                                    },
+                                })
+                            end
+                        end
+                        if #section_buttons == 0 then
+                            UIManager:show(InfoMessage:new {
+                                text = _("No Dispatcher actions available."),
+                                timeout = 2,
+                            })
+                            return
+                        end
+                        table.insert(section_buttons, {
+                            {
+                                text = _("Cancel"),
+                                callback = function() end,
+                            },
+                        })
+                        section_dlg = ButtonDialog:new {
+                            title = _("Select action section"),
+                            title_align = "center",
+                            buttons = section_buttons,
+                        }
+                        UIManager:show(section_dlg)
+                    end,
+                })
+
+                table.insert(items, {
+                    text = _("+ Add plugin tab"),
+                    callback = function(touchmenu)
+                        -- The navbar lives in ReaderUI, so reader-side plugins
+                        -- (assistant, statistics, ...) are children of
+                        -- ReaderUI.instance; FM-only plugins live on
+                        -- FileManager.instance. Probe whichever is available,
+                        -- reader first.
+                        local ReaderUI = require("apps/reader/readerui")
+                        local ui = ReaderUI.instance or FileManager.instance
+                        if not ui then
+                            UIManager:show(InfoMessage:new {
+                                text = _("No reader or file manager instance available."),
+                                timeout = 2,
+                            })
+                            return
+                        end
+                        local plugin_items = {}
+                        local seen = {}
+                        local native_keys = {
+                            screenshot=true, menu=true, history=true, bookinfo=true,
+                            collections=true, filesearcher=true, folder_shortcuts=true,
+                            languagesupport=true, dictionary=true, wikipedia=true,
+                            devicestatus=true, devicelistener=true, networklistener=true,
+                            -- ReaderUI core modules
+                            activityindicator=true, annotation=true, back=true,
+                            bookmark=true, config=true, crelistener=true,
+                            cropping=true, font=true, gotopage=true, handmade=true,
+                            highlight=true, hinting=true, keyselection=true,
+                            koptlistener=true, link=true, pagemap=true,
+                            paging=true, panning=true, rolling=true,
+                            scrolling=true, search=true, status=true,
+                            styletweak=true, thumbnail=true, toc=true,
+                            typeset=true, typography=true, userhyph=true,
+                            view=true, zooming=true,
+                        }
+                        local ui_val_to_key = {}
+                        for k, v in pairs(ui) do
+                            if type(k) == "string" and type(v) == "table" then
+                                ui_val_to_key[v] = k
+                            end
+                        end
+                        for i = 1, #ui do
+                            local val = ui[i]
+                            if type(val) == "table" and type(val.name) == "string" then
+                                local ui_key = ui_val_to_key[val]
+                                if ui_key and not native_keys[ui_key] and not seen[ui_key] then
+                                    seen[ui_key] = true
+                                    -- Launch strategy: re-use the plugin's own
+                                    -- main-menu entry callback (that is how
+                                    -- users launch plugins anyway). Probe
+                                    -- addToMainMenu now to find the entry and
+                                    -- its key; dispatch re-probes live.
+                                    local probe = {}
+                                    local menu_key, menu_text
+                                    local ok = pcall(function() val:addToMainMenu(probe) end)
+                                    if ok then
+                                        for pkey, entry in pairs(probe) do
+                                            if type(entry) == "table"
+                                                and type(entry.callback) == "function"
+                                                and type(entry.text) == "string" and entry.text ~= "" then
+                                                menu_key = pkey
+                                                menu_text = entry.text
+                                                break
+                                            end
+                                        end
+                                    end
+                                    -- Legacy fallback: a direct launch method.
+                                    local method
+                                    local launch_methods = { "onShow", "show", "open", "launch", "onOpen" }
+                                    for _, m in ipairs(launch_methods) do
+                                        if type(val[m]) == "function" then
+                                            method = m
+                                            break
+                                        end
+                                    end
+                                    if menu_key or method then
+                                        table.insert(plugin_items, {
+                                            text = menu_text or val.name,
+                                            plugin_name = ui_key,
+                                            menu_key = menu_key,
+                                            plugin_method = method,
+                                        })
+                                    end
+                                end
+                            end
+                        end
+                        if #plugin_items == 0 then
+                            UIManager:show(InfoMessage:new {
+                                text = _("No launchable plugins found."),
+                                timeout = 2,
+                            })
+                            return
+                        end
+                        table.sort(plugin_items, function(a, b) return a.text < b.text end)
+                        local plugin_dlg
+                        local plugin_buttons = {}
+                        for _i, pi in ipairs(plugin_items) do
+                            table.insert(plugin_buttons, {
+                                {
+                                    text = pi.text,
+                                    callback = function()
+                                        UIManager:close(plugin_dlg)
+                                                local label_dlg
+                                                label_dlg = InputDialog:new {
+                                                    title = _("Tab label"),
+                                                    input = pi.text,
+                                                    buttons = {
+                                                        {
+                                                            {
+                                                                text = _("Cancel"),
+                                                                callback = function()
+                                                                    UIManager:close(label_dlg)
+                                                                end,
+                                                            },
+                                                            {
+                                                                text = _("Next"),
+                                                                is_enter_default = true,
+                                                                callback = function()
+                                                                    local label = label_dlg:getInputText()
+                                                                        or pi.text
+                                                                    UIManager:close(label_dlg)
+                                                                    local icon_dlg
+                                                                    icon_dlg = InputDialog:new {
+                                                                        title = _("Icon name"),
+                                                                        hint = T(
+                                                                            _("Place %1.svg or %1.png in %2"),
+                                                                            "my_icon",
+                                                                            DataStorage:getDataDir() .. "/icons"
+                                                                        ),
+                                                                        input = "appbar.plugins",
+                                                                        buttons = {
+                                                                            {
+                                                                                {
+                                                                                    text = _("Cancel"),
+                                                                                    callback = function()
+                                                                                        UIManager:close(icon_dlg)
+                                                                                    end,
+                                                                                },
+                                                                                {
+                                                                                    text = _("Add tab"),
+                                                                                    is_enter_default = true,
+                                                                                    callback = function()
+                                                                                        local icon = icon_dlg:getInputText()
+                                                                                            or "appbar.plugins"
+                                                                                        UIManager:close(icon_dlg)
+                                                                                        local new_id = "plugin_"
+                                                                                            .. pi.plugin_name
+                                                                                        local new_ct = {
+                                                                                            id = new_id,
+                                                                                            label = label,
+                                                                                            icon = icon,
+                                                                                            source = "plugin",
+                                                                                            plugin_key = pi.plugin_name,
+                                                                                            menu_key = pi.menu_key,
+                                                                                            plugin_method = pi.plugin_method,
+                                                                                        }
+                                                                                        commitCustomTab(new_ct)
+                                                                                        if touchmenu then
+                                                                                            touchmenu:updateItems()
+                                                                                        end
+                                                                                    end,
+                                                                                },
+                                                                            },
+                                                                        },
+                                                                    }
+                                                                    UIManager:show(icon_dlg)
+                                                                    icon_dlg:onShowKeyboard()
+                                                                end,
+                                                            },
+                                                        },
+                                                    },
+                                                }
+                                                UIManager:show(label_dlg)
+                                                label_dlg:onShowKeyboard()
+                                            end,
+                                        },
+                                    })
+                                end
+                                table.insert(plugin_buttons, {
+                                    {
+                                        text = _("Cancel"),
+                                        callback = function() end,
+                                    },
+                                })
+                                plugin_dlg = ButtonDialog:new {
+                                    title = _("Select plugin"),
+                                    title_align = "center",
+                                    buttons = plugin_buttons,
+                                }
+                                UIManager:show(plugin_dlg)
                     end,
                 })
 
