@@ -13,8 +13,6 @@ local Screen = require("device").screen
 local _ = require("gettext")
 local T = require("ffi/util").template
 
--- Load version via dofile to bypass stale module cache (require may serve an
--- old cached copy after the updater replaces files).
 local _plugin_dir = (debug.getinfo(1, "S").source or ""):match("^@?(.+)/[^/]+$") or "."
 local ok_meta, meta = pcall(dofile, _plugin_dir .. "/_meta.lua")
 local VERSION = (ok_meta and type(meta) == "table" and meta.version) or require("_meta").version
@@ -55,8 +53,6 @@ local function groupFeatureMenuItemsWithTrailingItem(items)
     return grouped
 end
 
--- Backfill any keys missing from the saved settings. New defaults are added
--- here so older settings files keep working after an upgrade.
 local function deepFill(dst, defaults)
     for k, v in pairs(defaults) do
         if type(v) == "table" then
@@ -2332,11 +2328,6 @@ function SettingsManager:getNavbarMenu(plugin)
                 table.insert(items, {
                     text = _("+ Add plugin tab"),
                     callback = function(touchmenu)
-                        -- The navbar lives in ReaderUI, so reader-side plugins
-                        -- (assistant, statistics, ...) are children of
-                        -- ReaderUI.instance; FM-only plugins live on
-                        -- FileManager.instance. Probe whichever is available,
-                        -- reader first.
                         local ReaderUI = require("apps/reader/readerui")
                         local ui = ReaderUI.instance or FileManager.instance
                         if not ui then
@@ -2377,11 +2368,6 @@ function SettingsManager:getNavbarMenu(plugin)
                                 local ui_key = ui_val_to_key[val]
                                 if ui_key and not native_keys[ui_key] and not seen[ui_key] then
                                     seen[ui_key] = true
-                                    -- Launch strategy: re-use the plugin's own
-                                    -- main-menu entry callback (that is how
-                                    -- users launch plugins anyway). Probe
-                                    -- addToMainMenu now to find the entry and
-                                    -- its key; dispatch re-probes live.
                                     local probe = {}
                                     local menu_key, menu_text
                                     local ok = pcall(function() val:addToMainMenu(probe) end)
@@ -2396,7 +2382,6 @@ function SettingsManager:getNavbarMenu(plugin)
                                             end
                                         end
                                     end
-                                    -- Legacy fallback: a direct launch method.
                                     local method
                                     local launch_methods = { "onShow", "show", "open", "launch", "onOpen" }
                                     for _, m in ipairs(launch_methods) do
