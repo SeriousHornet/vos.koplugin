@@ -1,14 +1,9 @@
---[[
-Helpers to draw VOS's own SVG icons straight from the plugin's
-resources/ folder, instead of relying on IconWidget's name resolution
-(which only finds icons copied into koreader's root icons/ dir).
+--[[ Helpers to draw VOS's own SVG icons straight from the plugin's resources.
 ]]
 
 local DataStorage = require("datastorage")
 local lfs = require("libs/libkoreader-lfs")
 
--- This file lives at <plugin_root>/modules/, so walk up one level to find
--- the plugin's own resources/ directory.
 local MODULE_DIR = debug.getinfo(1, "S").source:match("^@(.+[/\\])[^/\\]+$") or "./"
 local VOS_RESOURCE_DIR = (MODULE_DIR:match("^(.*)[/\\]modules[/\\]$") or MODULE_DIR:sub(1, -2)) .. "/resources/"
 local icon_files = {}
@@ -29,8 +24,6 @@ local function userIconFile(name)
     end
 end
 
--- Return the absolute path of <name>.svg inside resources/ if it exists,
--- nil otherwise (so IconWidget falls back to name resolution / defaults).
 local function iconFile(name)
     if icon_files[name] ~= nil then
         return icon_files[name] or nil
@@ -49,11 +42,6 @@ local function iconFile(name)
     return nil
 end
 
--- Build the IconWidget options for a VOS icon: explicit `file` wins,
--- `icon` remains set as fallback and for any name-based patching.
--- `alpha` defaults to true so VOS's transparent SVGs keep their alpha
--- layer at render time (see ImageWidget: flattening of icons). Callers
--- may merge extra options (width, height, rotation_angle, ...) via `extra`.
 local function icon(name, extra)
     local o = { icon = name, file = iconFile(name), alpha = true }
     if extra then
