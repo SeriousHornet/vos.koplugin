@@ -422,7 +422,7 @@ local function paintProgressBar(bb, target, x, y, self_widget, c, corner_mark_si
                     pages = tonumber(bookinfo.pages)
                 end
                 if not pages then
-                    -- CoverBrowser does not store pages for EPUB (crengine), so fall back to a page-count token in the filename, e.g. "P(170)".
+                    -- CoverBrowser does not store pages for EPUB, so fall back to a page-count token in the filename, e.g. "P(170)".
                     pages = self_widget.filepath:match("[Pp]%((%d+)%)")
                         or self_widget.filepath:match("(%d+)%s*[Pp]ages?")
                     if pages then
@@ -1249,12 +1249,40 @@ local function updateFolderCover(self_widget, c)
     if self_widget.entry.is_file or self_widget.entry.file then
         return
     end
-    local dir_path = self_widget.entry and self_widget.entry.path
+    local entry = self_widget.entry
+    local dir_path = entry and entry.path
     if not dir_path then
         return
     end
-    local entries = getFolderEntries(self_widget.menu, dir_path)
 
+    -- Virtual folders have no on-disk directory so feeding their real book
+    -- entries directly into VOS's normal cover renderer.
+    if entry.is_vos_series_folder and type(entry.series_books) == "table" then
+        local covers = {}
+        local wanted = (c.folder_covers.style or "single") == "single" and 1 or 4
+        for _, book in ipairs(entry.series_books) do
+            local path = book and (book.path or book.file)
+            if path then
+                local cover = getCachedFolderCover(path, self_widget.menu)
+                if cover then
+                    covers[#covers + 1] = cover
+                    if #covers >= wanted then break end
+                end
+            end
+        end
+        if #covers == 0 then
+            return
+        end
+        if wanted == 1 then
+            setFolderCover(self_widget, covers[1], c, entry.series_books)
+        else
+            setFolderCover(self_widget, { style = c.folder_covers.style or "collage", covers = covers }, c, entry.series_books)
+        end
+        self_widget._foldercover_processed = true
+        return
+    end
+
+    local entries = getFolderEntries(self_widget.menu, dir_path)
     local cover_file = findFolderCoverFile(dir_path)
     if cover_file then
         local ok = pcall(setFolderCover, self_widget, { file = cover_file }, c, entries)

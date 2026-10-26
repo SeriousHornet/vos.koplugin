@@ -415,7 +415,7 @@ function SettingsManager:loadDefaults()
             ui_font_name = "Noto Sans",
             hide_last_visited_underline = true,
             hide_up_folder = true,
-            hide_empty_folders = false,
+            hide_empty_folders = true,
             auto_menu_size = true,
             incognito_enabled = true,
             menu_text = {
@@ -476,12 +476,15 @@ function SettingsManager:loadDefaults()
             exclude_folders = {
                 enabled = false,
             },
+            series_folders = {
+                enabled = true,
+            },
             browser_double_tap = {
                 enabled = false,
                 timeout_ms = 500,
             },
             filemanager_titlebar = {
-                enabled = true,
+                enabled = false,
                 show = {
                     wifi = true,
                     memory = false,
@@ -765,6 +768,8 @@ function SettingsManager:getMainMenu(plugin)
                 end
                 local dt_item = getMenuItem("browser_double_tap")
                 if dt_item then bf_items[#bf_items + 1] = dt_item end
+                local series_item = getMenuItem("series_folders")
+                if series_item then bf_items[#bf_items + 1] = series_item end
                 items[#items + 1] = { text = _("Browser folders"), sub_item_table = bf_items }
 
                 local menus_items = {}

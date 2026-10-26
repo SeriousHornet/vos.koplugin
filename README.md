@@ -4,7 +4,7 @@ Visual Overhaul Suite is a KOReader plugin for customizing the file browser, cov
 
 VOS combines the functionality of the earlier [SeriousHornet/KOReader.patches](https://github.com/SeriousHornet/KOReader.patches) collection into an installable plugin. Its resources are bundled, settings are applied through the UI, and all changes can be previewed without restarting KOReader.
 
-Fully compatible with popular UIs like SimpleUI, Project: Title, Bookshelf.
+Fully compatible with popular UIs like SimpleUI v3.0, Project: Title, Bookshelf.
 
 If you have been using any of my [patches](https://github.com/SeriousHornet/KOReader.patches) previously, you can now remove them and install this plugin. Don't worry about the custom settings you set on those patches, you can configure everything in the VOS menu now.
 

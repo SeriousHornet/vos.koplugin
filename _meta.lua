@@ -1,5 +1,5 @@
 local _ = require("gettext")
-local version = "1.4"
+local version = "1.4.1"
 
 return {
     fullname = _("Visual Overhaul Suite (VOS)"),
