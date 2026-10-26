@@ -6,6 +6,7 @@ local Font = require("ui/font")
 local UIManager = require("ui/uimanager")
 local InputDialog = require("ui/widget/inputdialog")
 local PathChooser = require("ui/widget/pathchooser")
+local FileChooser = require("ui/widget/filechooser")
 local SortWidget = require("ui/widget/sortwidget")
 local ConfirmBox = require("ui/widget/confirmbox")
 local InfoMessage = require("ui/widget/infomessage")
@@ -2060,11 +2061,21 @@ function SettingsManager:getNavbarMenu(plugin)
                     text = _("+ Add folder tab"),
                     separator = true,
                     callback = function(touchmenu)
+                        local old_show_flat_view = FileChooser.show_flat_view
+                        FileChooser.show_flat_view = false
+                        local flat_view_restored = false
+                        local function restoreFlatView()
+                            if flat_view_restored then return end
+                            flat_view_restored = true
+                            FileChooser.show_flat_view = old_show_flat_view
+                        end
+
                         local path_chooser = PathChooser:new {
                             select_file = false,
                             show_files = false,
                             path = G_reader_settings:readSetting("lastdir") or "/",
                             onConfirm = function(dir_path)
+                                restoreFlatView()
                                 local icon_dlg
                                 icon_dlg = InputDialog:new {
                                     title = _("Icon name"),
@@ -2151,6 +2162,13 @@ function SettingsManager:getNavbarMenu(plugin)
                                 icon_dlg:onShowKeyboard()
                             end,
                         }
+                        local original_onCloseWidget = path_chooser.onCloseWidget
+                        function path_chooser:onCloseWidget(...)
+                            restoreFlatView()
+                            if original_onCloseWidget then
+                                return original_onCloseWidget(self, ...)
+                            end
+                        end
                         UIManager:show(path_chooser)
                     end,
                 })
